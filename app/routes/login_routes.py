@@ -1,5 +1,6 @@
 from flask import Blueprint, request, jsonify
 from flask_cors import CORS
+from flask_jwt_extended import create_access_token
 
 from app.models.login import db, login
 
@@ -50,11 +51,15 @@ def user_login():
     if not user or user.password != password:
         return jsonify({'error': 'Invalid credentials'}), 401
 
+    # ✅ Generate JWT token
+    access_token = create_access_token(identity=user.id)
+
     # ✅ Password NOT returned
     return jsonify({
         'user': {
             'id': user.id,
             'username': user.username,
             'email': user.email
-        }
+        },
+        'access_token': access_token
     }), 200

@@ -2,11 +2,13 @@ from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_cors import CORS
+from flask_jwt_extended import JWTManager
 from config import Config
 
 # Initialize extensions
 db = SQLAlchemy()
 migrate = Migrate()
+jwt = JWTManager()
 
 
 def create_app():
@@ -16,6 +18,9 @@ def create_app():
     # Initialize database
     db.init_app(app)
     migrate.init_app(app, db)
+    
+    # Initialize JWT
+    jwt.init_app(app)
 
     # Enable CORS
     CORS(
@@ -37,6 +42,7 @@ def create_app():
     from app.routes.service_routes import service_bp
     from app.routes.usertype_routes import user_type_bp
     from app.routes.employee_routes import employee_bp
+    from app.routes.attendance_routes import attendance_bp  # ADD THIS LINE
 
     app.register_blueprint(login_bp, url_prefix="/api")
     app.register_blueprint(product_bp, url_prefix="/api")
@@ -47,6 +53,7 @@ def create_app():
     app.register_blueprint(service_bp)
     app.register_blueprint(user_type_bp)
     app.register_blueprint(employee_bp)
+    app.register_blueprint(attendance_bp) 
 
     # Health Check Route
     @app.route('/api/health', methods=['GET'])
