@@ -1,6 +1,8 @@
 from flask import Blueprint, request, jsonify, send_from_directory
 from app import db
 from app.models.employee import Employee
+from app.models.usertype import UserType
+from app.models.current_company import Company  # Import Company model
 from datetime import datetime
 import os
 import traceback
@@ -46,6 +48,16 @@ def generate_employee_id():
             return "EMP001"
     return "EMP001"
 
+def validate_user_type(user_type_name):
+    """Validate that user_type exists in the database"""
+    user_type = UserType.query.filter_by(name=user_type_name).first()
+    if not user_type:
+        # Get all valid user types for error message
+        valid_types = UserType.query.all()
+        valid_type_names = [ut.name for ut in valid_types]
+        raise ValueError(f"Invalid user_type: {user_type_name}. Must be one of: {', '.join(valid_type_names)}")
+    return user_type
+
 @employee_bp.route('/employees', methods=['GET'])
 def get_employees():
     """Get all employees"""
@@ -76,6 +88,17 @@ def get_employee(id):
         print(f"Error in get_employee: {str(e)}")
         return jsonify({'error': 'Failed to fetch employee'}), 500
 
+@employee_bp.route('/companies/list', methods=['GET'])
+def get_companies_list():
+    """Get list of all companies for dropdown"""
+    try:
+        companies = Company.query.filter_by(is_active=True).order_by(Company.name).all()
+        companies_list = [{'id': company.id, 'name': company.name} for company in companies]
+        return jsonify(companies_list), 200
+    except Exception as e:
+        print(f"Error in get_companies_list: {str(e)}")
+        return jsonify({'error': 'Failed to fetch companies'}), 500
+
 @employee_bp.route('/employees', methods=['POST'])
 def create_employee():
     """Create a new employee"""
@@ -92,11 +115,12 @@ def create_employee():
         if existing_email:
             return jsonify({'error': 'Email already exists'}), 400
         
-        # Get user_type with validation
+        # Get user_type and validate from database
         user_type = request.form.get('user_type', 'employee')
-        valid_user_types = ['admin', 'manager', 'employee', 'hr']
-        if user_type not in valid_user_types:
-            return jsonify({'error': f'Invalid user_type. Must be one of: {", ".join(valid_user_types)}'}), 400
+        try:
+            validate_user_type(user_type)
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 400
         
         # Handle date of joining
         date_of_joining = None
@@ -107,6 +131,17 @@ def create_employee():
                 ).date()
             except:
                 pass
+        
+        # Handle company
+        current_company = request.form.get('current_company')
+        company_id = request.form.get('company_id')
+        
+        # Validate company if company_id is provided
+        if company_id:
+            company = Company.query.get(company_id)
+            if not company:
+                return jsonify({'error': 'Invalid company selected'}), 400
+            current_company = company.name
         
         # Handle file uploads
         aadhar_file = request.files.get('aadhar_attachment')
@@ -130,6 +165,8 @@ def create_employee():
             department=request.form.get('department'),
             designation=request.form.get('designation'),
             date_of_joining=date_of_joining,
+            current_company=current_company,
+            company_id=company_id if company_id else None,
             user_type=user_type,
             aadhar_card_number=request.form.get('aadhar_card_number'),
             pan_card_number=request.form.get('pan_card_number'),
@@ -167,13 +204,14 @@ def update_employee(id):
             if existing_email:
                 return jsonify({'error': 'Email already exists'}), 400
         
-        # Update user_type with validation if provided
+        # Update user_type with validation from database if provided
         user_type = request.form.get('user_type')
         if user_type:
-            valid_user_types = ['admin', 'manager', 'employee', 'hr']
-            if user_type not in valid_user_types:
-                return jsonify({'error': f'Invalid user_type. Must be one of: {", ".join(valid_user_types)}'}), 400
-            employee.user_type = user_type
+            try:
+                validate_user_type(user_type)
+                employee.user_type = user_type
+            except ValueError as e:
+                return jsonify({'error': str(e)}), 400
         
         # Handle date of joining
         if request.form.get('date_of_joining'):
@@ -184,6 +222,23 @@ def update_employee(id):
                 employee.date_of_joining = date_of_joining
             except:
                 pass
+        
+        # Handle company
+        current_company = request.form.get('current_company')
+        company_id = request.form.get('company_id')
+        
+        if company_id:
+            company = Company.query.get(company_id)
+            if not company:
+                return jsonify({'error': 'Invalid company selected'}), 400
+            employee.current_company = company.name
+            employee.company_id = company_id
+        elif current_company:
+            employee.current_company = current_company
+            employee.company_id = None
+        else:
+            employee.current_company = None
+            employee.company_id = None
         
         # Handle file uploads
         aadhar_file = request.files.get('aadhar_attachment')
@@ -273,9 +328,11 @@ def delete_employee(id):
 def get_employees_by_type(user_type):
     """Get employees by user type"""
     try:
-        valid_user_types = ['admin', 'manager', 'employee', 'hr']
-        if user_type not in valid_user_types:
-            return jsonify({'error': f'Invalid user_type. Must be one of: {", ".join(valid_user_types)}'}), 400
+        # Validate user_type from database
+        try:
+            validate_user_type(user_type)
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 400
         
         employees = Employee.query.filter_by(user_type=user_type).order_by(Employee.created_at.desc()).all()
         return jsonify([employee.to_dict() for employee in employees]), 200
@@ -285,10 +342,11 @@ def get_employees_by_type(user_type):
 
 @employee_bp.route('/employees/user-types', methods=['GET'])
 def get_user_types():
-    """Get all available user types"""
+    """Get all available user types from database"""
     try:
-        user_types = ['admin', 'manager', 'employee', 'hr']
-        return jsonify({'user_types': user_types}), 200
+        user_types = UserType.query.all()
+        user_type_names = [user_type.name for user_type in user_types]
+        return jsonify({'user_types': user_type_names}), 200
     except Exception as e:
         print(f"Error in get_user_types: {str(e)}")
         return jsonify({'error': 'Failed to fetch user types'}), 500

@@ -15,6 +15,8 @@ class Employee(db.Model):
     department = db.Column(db.String(100))
     designation = db.Column(db.String(100))
     date_of_joining = db.Column(db.Date)
+    current_company = db.Column(db.String(200))  # New field for current company
+    company_id = db.Column(db.Integer, db.ForeignKey('companies.id'), nullable=True)  # Optional: reference to companies table
     
     # User type field (references name in user_types table)
     user_type = db.Column(db.String(50), nullable=False, default='employee')
@@ -35,6 +37,9 @@ class Employee(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
+    # Relationship
+    company = db.relationship('Company', backref='employees', lazy=True)
+    
     def __init__(self, **kwargs):
         super(Employee, self).__init__(**kwargs)
     
@@ -49,6 +54,8 @@ class Employee(db.Model):
             'department': self.department,
             'designation': self.designation,
             'date_of_joining': self.date_of_joining.isoformat() if self.date_of_joining else None,
+            'current_company': self.current_company,
+            'company_id': self.company_id,
             'user_type': self.user_type,
             'aadhar_card_number': self.aadhar_card_number,
             'pan_card_number': self.pan_card_number,
