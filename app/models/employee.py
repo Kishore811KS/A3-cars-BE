@@ -1,3 +1,4 @@
+# app/models/employee.py
 from app import db
 from datetime import datetime
 
@@ -9,14 +10,15 @@ class Employee(db.Model):
     employee_id = db.Column(db.String(50), unique=True, nullable=False, index=True)
     full_name = db.Column(db.String(200), nullable=False)
     email = db.Column(db.String(100), unique=True, nullable=False)
+    password_hash = db.Column(db.String(200))  # New password field
     phone_number = db.Column(db.String(20))
     
     # Employment details
     department = db.Column(db.String(100))
     designation = db.Column(db.String(100))
     date_of_joining = db.Column(db.Date)
-    current_company = db.Column(db.String(200))  # New field for current company
-    company_id = db.Column(db.Integer, db.ForeignKey('companies.id'), nullable=True)  # Optional: reference to companies table
+    current_company = db.Column(db.String(200))
+    company_id = db.Column(db.Integer, db.ForeignKey('companies.id'), nullable=True)
     
     # User type field (references name in user_types table)
     user_type = db.Column(db.String(50), nullable=False, default='employee')
@@ -50,6 +52,7 @@ class Employee(db.Model):
             'employee_id': self.employee_id,
             'full_name': self.full_name,
             'email': self.email,
+            # Don't include password_hash in dictionary
             'phone_number': self.phone_number,
             'department': self.department,
             'designation': self.designation,

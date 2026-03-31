@@ -1,4 +1,5 @@
-from flask import Blueprint, request, jsonify, send_from_directory
+# app/routes/employee.py
+from flask import Blueprint, request, jsonify, send_from_directory, session, current_app
 from app import db
 from app.models.employee import Employee
 from app.models.usertype import UserType
@@ -8,6 +9,8 @@ import os
 import traceback
 from werkzeug.utils import secure_filename
 import uuid
+from werkzeug.security import generate_password_hash, check_password_hash
+import secrets  # Add this import for generating secret key
 
 # Create blueprint
 employee_bp = Blueprint('employee', __name__, url_prefix='/api')
@@ -15,6 +18,30 @@ employee_bp = Blueprint('employee', __name__, url_prefix='/api')
 # Configure upload folder
 UPLOAD_FOLDER = 'uploads'
 ALLOWED_EXTENSIONS = {'pdf', 'jpg', 'jpeg', 'png', 'doc', 'docx'}
+
+# Function to ensure secret key is set
+def ensure_secret_key():
+    """Ensure Flask app has a secret key set for session management"""
+    try:
+        # Try to get the current app context
+        app = current_app._get_current_object()
+        if not app.secret_key:
+            # Generate a random secret key
+            app.config['SECRET_KEY'] = secrets.token_hex(32)
+            print(f"Secret key generated for session management")
+    except:
+        # If no app context, we'll handle it later
+        pass
+
+# Call this when blueprint is registered
+@employee_bp.record
+def record_params(setup_state):
+    """Called when blueprint is registered with the app"""
+    app = setup_state.app
+    if not app.secret_key:
+        # Generate a secret key for the app
+        app.config['SECRET_KEY'] = secrets.token_hex(32)
+        print(f"✅ Secret key configured for employee blueprint")
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -57,6 +84,122 @@ def validate_user_type(user_type_name):
         valid_type_names = [ut.name for ut in valid_types]
         raise ValueError(f"Invalid user_type: {user_type_name}. Must be one of: {', '.join(valid_type_names)}")
     return user_type
+
+# ========== AUTHENTICATION ROUTES ==========
+
+@employee_bp.route('/auth/login', methods=['POST'])
+def employee_login():
+    """Employee login endpoint"""
+    try:
+        # Ensure secret key is set
+        ensure_secret_key()
+        
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+        
+        email = data.get('email')
+        password = data.get('password')
+        
+        if not email or not password:
+            return jsonify({'error': 'Email and password are required'}), 400
+        
+        # Find employee by email
+        employee = Employee.query.filter_by(email=email).first()
+        
+        if not employee:
+            return jsonify({'error': 'Invalid email or password'}), 401
+        
+        # Check password
+        if not employee.password_hash or not check_password_hash(employee.password_hash, password):
+            return jsonify({'error': 'Invalid email or password'}), 401
+        
+        # Store user info in session
+        session['user_id'] = employee.id
+        session['user_email'] = employee.email
+        session['user_name'] = employee.full_name
+        session['user_type'] = employee.user_type
+        session['company_id'] = employee.company_id
+        session['company_name'] = employee.current_company
+        session['logged_in'] = True
+        
+        # Return user info
+        return jsonify({
+            'message': 'Login successful',
+            'user': {
+                'id': employee.id,
+                'employee_id': employee.employee_id,
+                'full_name': employee.full_name,
+                'email': employee.email,
+                'user_type': employee.user_type,
+                'department': employee.department,
+                'designation': employee.designation,
+                'current_company': employee.current_company,
+                'phone_number': employee.phone_number,
+                'blood_group': employee.blood_group
+            }
+        }), 200
+        
+    except Exception as e:
+        print(f"Error in employee_login: {str(e)}")
+        print(traceback.format_exc())
+        return jsonify({'error': 'Login failed'}), 500
+
+@employee_bp.route('/auth/logout', methods=['POST'])
+def employee_logout():
+    """Employee logout endpoint"""
+    session.clear()
+    return jsonify({'message': 'Logged out successfully'}), 200
+
+@employee_bp.route('/auth/check', methods=['GET'])
+def check_login():
+    """Check if user is logged in"""
+    if 'user_id' in session:
+        return jsonify({
+            'logged_in': True,
+            'user': {
+                'id': session.get('user_id'),
+                'email': session.get('user_email'),
+                'full_name': session.get('user_name'),
+                'user_type': session.get('user_type'),
+                'company_name': session.get('company_name')
+            }
+        }), 200
+    else:
+        return jsonify({'logged_in': False}), 200
+
+@employee_bp.route('/auth/me', methods=['GET'])
+def get_current_user():
+    """Get current logged in user info"""
+    if 'user_id' not in session:
+        return jsonify({'error': 'Not logged in'}), 401
+    
+    try:
+        employee = Employee.query.get(session['user_id'])
+        if not employee:
+            session.clear()
+            return jsonify({'error': 'User not found'}), 404
+        
+        return jsonify({
+            'user': {
+                'id': employee.id,
+                'employee_id': employee.employee_id,
+                'full_name': employee.full_name,
+                'email': employee.email,
+                'user_type': employee.user_type,
+                'department': employee.department,
+                'designation': employee.designation,
+                'current_company': employee.current_company,
+                'phone_number': employee.phone_number,
+                'blood_group': employee.blood_group
+            }
+        }), 200
+    except Exception as e:
+        print(f"Error in get_current_user: {str(e)}")
+        return jsonify({'error': 'Failed to get user info'}), 500
+
+# ========== EMPLOYEE CRUD ROUTES ==========
 
 @employee_bp.route('/employees', methods=['GET'])
 def get_employees():
@@ -156,11 +299,16 @@ def create_employee():
         if pan_file and pan_file.filename:
             pan_filename = save_file(pan_file, f"pan_{employee_id}")
         
+        # Hash password if provided
+        password = request.form.get('password')
+        password_hash = generate_password_hash(password) if password else None
+        
         # Create employee
         employee = Employee(
             employee_id=employee_id,
             full_name=request.form.get('full_name'),
             email=email,
+            password_hash=password_hash,
             phone_number=request.form.get('phone_number'),
             department=request.form.get('department'),
             designation=request.form.get('designation'),
@@ -181,7 +329,9 @@ def create_employee():
         db.session.add(employee)
         db.session.commit()
         
-        return jsonify(employee.to_dict()), 201
+        # Return employee without password hash
+        employee_dict = employee.to_dict()
+        return jsonify(employee_dict), 201
         
     except Exception as e:
         db.session.rollback()
@@ -261,6 +411,11 @@ def update_employee(id):
             pan_filename = save_file(pan_file, f"pan_{employee.employee_id}")
             employee.pan_attachment = pan_filename
         
+        # Update password if provided
+        password = request.form.get('password')
+        if password and password.strip():
+            employee.password_hash = generate_password_hash(password)
+        
         # Update fields
         if request.form.get('full_name'):
             employee.full_name = request.form.get('full_name')
@@ -287,7 +442,9 @@ def update_employee(id):
         
         db.session.commit()
         
-        return jsonify(employee.to_dict()), 200
+        # Return employee without password hash
+        employee_dict = employee.to_dict()
+        return jsonify(employee_dict), 200
         
     except Exception as e:
         db.session.rollback()
