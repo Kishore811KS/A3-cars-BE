@@ -6,7 +6,10 @@ from app import db
 from sqlalchemy import or_
 from datetime import datetime, timedelta
 
+from flask_cors import CORS
+
 quotation_bp = Blueprint('quotation_bp', __name__)
+CORS(quotation_bp)
 
 # ------------------ SEARCH PRODUCTS FOR QUOTATION ------------------
 @quotation_bp.route('/billing/search-products', methods=['GET'])

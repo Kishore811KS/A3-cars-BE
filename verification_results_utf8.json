@@ -1,0 +1,79 @@
+﻿[
+  {
+    "name": "Global Health Check",
+    "path": "/api/health",
+    "status_code": 200,
+    "cors_ok": true,
+    "cors_header": "*"
+  },
+  {
+    "name": "Login Endpoint",
+    "path": "/api/login",
+    "status_code": 200,
+    "cors_ok": true,
+    "cors_header": "*"
+  },
+  {
+    "name": "Products List",
+    "path": "/api/products",
+    "status_code": 200,
+    "cors_ok": true,
+    "cors_header": "*"
+  },
+  {
+    "name": "Billing List",
+    "path": "/api/billing/bills",
+    "status_code": 200,
+    "cors_ok": true,
+    "cors_header": "*"
+  },
+  {
+    "name": "Suppliers List",
+    "path": "/api/suppliers",
+    "status_code": 200,
+    "cors_ok": true,
+    "cors_header": "*"
+  },
+  {
+    "name": "Quotations List",
+    "path": "/api/quotation",
+    "status_code": 200,
+    "cors_ok": true,
+    "cors_header": "*"
+  },
+  {
+    "name": "Services List",
+    "path": "/api/services",
+    "status_code": 200,
+    "cors_ok": true,
+    "cors_header": "*"
+  },
+  {
+    "name": "User Types List",
+    "path": "/api/user-types",
+    "status_code": 200,
+    "cors_ok": true,
+    "cors_header": "*"
+  },
+  {
+    "name": "Employees List",
+    "path": "/api/employees",
+    "status_code": 200,
+    "cors_ok": true,
+    "cors_header": "*"
+  },
+  {
+    "name": "Attendance Today",
+    "path": "/api/attendance/today",
+    "status_code": 400,
+    "cors_ok": true,
+    "cors_header": "*"
+  },
+  {
+    "name": "Companies List",
+    "path": "/api/companies/",
+    "status_code": 200,
+    "cors_ok": true,
+    "cors_header": "*"
+  }
+]

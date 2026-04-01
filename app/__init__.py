@@ -13,6 +13,7 @@ jwt = JWTManager()
 
 def create_app():
     app = Flask(__name__)
+    print("Creating Flask App...")
     app.config.from_object(Config)
 
     # Initialize database
@@ -26,7 +27,7 @@ def create_app():
     CORS(
         app,
         supports_credentials=True,
-        resources={r"/api/*": {"origins": "*"}}
+        resources={r"/*": {"origins": "*"}}
     )
 
     # Import models so Flask-Migrate detects them
@@ -48,7 +49,7 @@ def create_app():
     app.register_blueprint(login_bp, url_prefix="/api")
     app.register_blueprint(product_bp, url_prefix="/api")
     app.register_blueprint(billing_bp, url_prefix="/api")
-    app.register_blueprint(supplier_bp)
+    app.register_blueprint(supplier_bp, url_prefix="/api")
     app.register_blueprint(quotation_bp, url_prefix='/api')
     app.register_blueprint(invoice_bp, url_prefix='/api')
     app.register_blueprint(service_bp)

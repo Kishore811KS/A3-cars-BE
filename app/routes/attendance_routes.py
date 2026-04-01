@@ -7,7 +7,10 @@ from app import db
 from app.models import Attendance, Employee
 import logging
 
-attendance_bp = Blueprint('attendance', __name__, url_prefix='/api/attendance')
+from flask_cors import CORS
+
+attendance_bp = Blueprint('attendance', __name__)
+CORS(attendance_bp)
 logger = logging.getLogger(__name__)
 
 

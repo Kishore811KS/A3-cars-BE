@@ -1,4 +1,5 @@
 from flask import Blueprint, request, jsonify, make_response, send_from_directory
+from flask_cors import CORS
 from app import db
 from app.models.supplier import Supplier, Item
 from datetime import datetime
@@ -8,6 +9,7 @@ from werkzeug.utils import secure_filename
 import uuid
 
 supplier_bp = Blueprint('supplier', __name__)
+CORS(supplier_bp)
 
 # File upload configuration - Use absolute path
 # Get the directory where this file is located
@@ -36,7 +38,7 @@ def allowed_file(filename):
 
 # ==================== FILE UPLOAD ROUTES ====================
 
-@supplier_bp.route('/api/upload', methods=['POST', 'OPTIONS'])
+@supplier_bp.route('/upload', methods=['POST', 'OPTIONS'])
 def upload_file():
     """Upload a file and return its path"""
     try:
@@ -154,7 +156,7 @@ def get_uploaded_file(filename):
         print(traceback.format_exc())
         return jsonify({'error': str(e)}), 500
 
-@supplier_bp.route('/api/debug/uploads', methods=['GET', 'OPTIONS'])
+@supplier_bp.route('/debug/uploads', methods=['GET', 'OPTIONS'])
 def debug_uploads():
     """Debug endpoint to check uploads folder"""
     try:
@@ -217,7 +219,7 @@ def debug_uploads():
         print(traceback.format_exc())
         return jsonify({'error': str(e)}), 500
 
-@supplier_bp.route('/api/delete-file', methods=['POST', 'OPTIONS'])
+@supplier_bp.route('/delete-file', methods=['POST', 'OPTIONS'])
 def delete_file():
     """Delete an uploaded file"""
     try:
@@ -263,7 +265,7 @@ def delete_file():
         return jsonify({'error': str(e)}), 500
 
 # Test route to verify blueprint is working
-@supplier_bp.route('/api/test', methods=['GET', 'POST', 'OPTIONS'])
+@supplier_bp.route('/test', methods=['GET', 'POST', 'OPTIONS'])
 def test_route():
     """Test route to verify blueprint is working"""
     try:
@@ -295,7 +297,7 @@ def test_route():
         return jsonify({'error': str(e)}), 500
 
 # Check session route
-@supplier_bp.route('/api/check-session', methods=['GET', 'POST', 'OPTIONS'])
+@supplier_bp.route('/check-session', methods=['GET', 'POST', 'OPTIONS'])
 def check_session():
     """Check session endpoint"""
     try:
@@ -318,7 +320,7 @@ def check_session():
 # ==================== SUPPLIER ROUTES ====================
 
 # Get all suppliers
-@supplier_bp.route("/api/suppliers", methods=["GET", "OPTIONS"])
+@supplier_bp.route("/suppliers", methods=["GET", "OPTIONS"])
 def get_suppliers():
     """Get all suppliers"""
     try:
@@ -338,7 +340,7 @@ def get_suppliers():
         return jsonify({"error": "Failed to fetch suppliers"}), 400
 
 # Get single supplier
-@supplier_bp.route("/api/suppliers/<int:supplier_id>", methods=["GET", "OPTIONS"])
+@supplier_bp.route("/suppliers/<int:supplier_id>", methods=["GET", "OPTIONS"])
 def get_supplier(supplier_id):
     """Get single supplier by ID"""
     try:
@@ -361,7 +363,7 @@ def get_supplier(supplier_id):
         return jsonify({"error": "Failed to fetch supplier"}), 400
 
 # Create new supplier
-@supplier_bp.route("/api/suppliers", methods=["POST", "OPTIONS"])
+@supplier_bp.route("/suppliers", methods=["POST", "OPTIONS"])
 def create_supplier():
     """Create a new supplier"""
     try:
@@ -427,7 +429,7 @@ def create_supplier():
         return jsonify({"error": str(e)}), 400
 
 # Update supplier
-@supplier_bp.route("/api/suppliers/<int:supplier_id>", methods=["PUT", "OPTIONS"])
+@supplier_bp.route("/suppliers/<int:supplier_id>", methods=["PUT", "OPTIONS"])
 def update_supplier(supplier_id):
     """Update an existing supplier"""
     try:
@@ -474,7 +476,7 @@ def update_supplier(supplier_id):
         return jsonify({"error": str(e)}), 400
 
 # Delete supplier
-@supplier_bp.route("/api/suppliers/<int:supplier_id>", methods=["DELETE", "OPTIONS"])
+@supplier_bp.route("/suppliers/<int:supplier_id>", methods=["DELETE", "OPTIONS"])
 def delete_supplier(supplier_id):
     """Delete a supplier"""
     try:
@@ -507,7 +509,7 @@ def delete_supplier(supplier_id):
 # ==================== ITEM ROUTES ====================
 
 # Get all items for a supplier
-@supplier_bp.route("/api/suppliers/<int:supplier_id>/items", methods=["GET", "OPTIONS"])
+@supplier_bp.route("/suppliers/<int:supplier_id>/items", methods=["GET", "OPTIONS"])
 def get_supplier_items(supplier_id):
     """Get all items for a specific supplier"""
     try:
@@ -533,7 +535,7 @@ def get_supplier_items(supplier_id):
         return jsonify({"error": "Failed to fetch items"}), 400
 
 # Get single item
-@supplier_bp.route("/api/items/<int:item_id>", methods=["GET", "OPTIONS"])
+@supplier_bp.route("/items/<int:item_id>", methods=["GET", "OPTIONS"])
 def get_item(item_id):
     """Get single item by ID"""
     try:
@@ -557,7 +559,7 @@ def get_item(item_id):
         return jsonify({"error": "Failed to fetch item"}), 400
 
 # Create new item
-@supplier_bp.route("/api/suppliers/<int:supplier_id>/items", methods=["POST", "OPTIONS"])
+@supplier_bp.route("/suppliers/<int:supplier_id>/items", methods=["POST", "OPTIONS"])
 def create_item(supplier_id):
     """Create a new item for a supplier"""
     try:
@@ -636,7 +638,7 @@ def create_item(supplier_id):
         return jsonify({"error": str(e)}), 400
 
 # Update item
-@supplier_bp.route("/api/items/<int:item_id>", methods=["PUT", "OPTIONS"])
+@supplier_bp.route("/items/<int:item_id>", methods=["PUT", "OPTIONS"])
 def update_item(item_id):
     """Update an existing item"""
     try:
@@ -689,7 +691,7 @@ def update_item(item_id):
         return jsonify({"error": str(e)}), 400
 
 # Delete item
-@supplier_bp.route("/api/items/<int:item_id>", methods=["DELETE", "OPTIONS"])
+@supplier_bp.route("/items/<int:item_id>", methods=["DELETE", "OPTIONS"])
 def delete_item(item_id):
     """Delete an item"""
     try:
@@ -733,7 +735,7 @@ def delete_item(item_id):
 # ==================== BULK OPERATIONS ====================
 
 # Get all suppliers with their items
-@supplier_bp.route("/api/suppliers-with-items", methods=["GET", "OPTIONS"])
+@supplier_bp.route("/suppliers-with-items", methods=["GET", "OPTIONS"])
 def get_suppliers_with_items():
     """Get all suppliers with their items"""
     try:
@@ -762,7 +764,7 @@ def get_suppliers_with_items():
         return jsonify({"error": "Failed to fetch suppliers with items"}), 400
 
 # Bulk create items
-@supplier_bp.route("/api/items/bulk", methods=["POST", "OPTIONS"])
+@supplier_bp.route("/items/bulk", methods=["POST", "OPTIONS"])
 def bulk_create_items():
     """Create multiple items at once"""
     try:
