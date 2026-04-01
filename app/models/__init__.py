@@ -1,5 +1,6 @@
 from app.models.attendance import Attendance
 from app.models.billing import Bill, BillItem, Payment
+from app.models.discount import DiscountRange, DiscountLog  
 from app.models.employee import Employee
 from app.models.invoice import Invoice, InvoiceItem
 from app.models.login import login
@@ -15,6 +16,8 @@ __all__ = [
     'Bill',
     'BillItem',
     'Payment',
+    'DiscountRange',  
+    'DiscountLog',    
     'Employee',
     'Invoice',
     'InvoiceItem',

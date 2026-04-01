@@ -1,11 +1,11 @@
 from flask import Blueprint, request, jsonify
-from flask_cors import CORS
 from flask_jwt_extended import create_access_token
-
 from app.models.login import db, login
 
+from flask_cors import CORS
+
 login_bp = Blueprint('login_bp', __name__)
-CORS(login_bp)   # Enable CORS for this blueprint
+CORS(login_bp)
 
 
 # ---------- USER REGISTER ----------

@@ -6,7 +6,10 @@ from datetime import datetime, timedelta
 from sqlalchemy import func
 import traceback
 
+from flask_cors import CORS
+
 invoice_bp = Blueprint('invoice', __name__)
+CORS(invoice_bp)
 
 def generate_invoice_number():
     """Generate a unique invoice number"""
