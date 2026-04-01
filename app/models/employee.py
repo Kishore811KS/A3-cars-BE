@@ -1,3 +1,4 @@
+# app/models/employee.py
 from app import db
 from datetime import datetime
 
@@ -9,12 +10,15 @@ class Employee(db.Model):
     employee_id = db.Column(db.String(50), unique=True, nullable=False, index=True)
     full_name = db.Column(db.String(200), nullable=False)
     email = db.Column(db.String(100), unique=True, nullable=False)
+    password_hash = db.Column(db.String(200))  # New password field
     phone_number = db.Column(db.String(20))
     
     # Employment details
     department = db.Column(db.String(100))
     designation = db.Column(db.String(100))
     date_of_joining = db.Column(db.Date)
+    current_company = db.Column(db.String(200))
+    company_id = db.Column(db.Integer, db.ForeignKey('companies.id'), nullable=True)
     
     # User type field (references name in user_types table)
     user_type = db.Column(db.String(50), nullable=False, default='employee')
@@ -35,6 +39,9 @@ class Employee(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
+    # Relationship
+    company = db.relationship('Company', backref='employees', lazy=True)
+    
     def __init__(self, **kwargs):
         super(Employee, self).__init__(**kwargs)
     
@@ -45,10 +52,13 @@ class Employee(db.Model):
             'employee_id': self.employee_id,
             'full_name': self.full_name,
             'email': self.email,
+            # Don't include password_hash in dictionary
             'phone_number': self.phone_number,
             'department': self.department,
             'designation': self.designation,
             'date_of_joining': self.date_of_joining.isoformat() if self.date_of_joining else None,
+            'current_company': self.current_company,
+            'company_id': self.company_id,
             'user_type': self.user_type,
             'aadhar_card_number': self.aadhar_card_number,
             'pan_card_number': self.pan_card_number,
