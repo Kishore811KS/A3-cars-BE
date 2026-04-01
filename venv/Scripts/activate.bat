@@ -8,7 +8,7 @@ if defined _OLD_CODEPAGE (
     "%SystemRoot%\System32\chcp.com" 65001 > nul
 )
 
-set "VIRTUAL_ENV=C:\Users\Kishore\Documents\A3-cars-BE\venv"
+set "VIRTUAL_ENV=D:\avva inventory m3cars\A3-cars-BE\venv"
 
 if not defined PROMPT set PROMPT=$P$G
 
