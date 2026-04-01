@@ -44,6 +44,7 @@ def create_app():
     from app.routes.employee_routes import employee_bp
     from app.routes.attendance_routes import attendance_bp
     from app.routes.current_company_routes import company_bp
+    from app.routes.enquiry_routes import enquiry_bp
 
     app.register_blueprint(login_bp, url_prefix="/api")
     app.register_blueprint(product_bp, url_prefix="/api")
@@ -55,7 +56,8 @@ def create_app():
     app.register_blueprint(user_type_bp)
     app.register_blueprint(employee_bp)
     app.register_blueprint(attendance_bp)
-    app.register_blueprint(company_bp) 
+    app.register_blueprint(company_bp)
+    app.register_blueprint(enquiry_bp,url_prefix="/api") 
 
     # Health Check Route
     @app.route('/api/health', methods=['GET'])

@@ -1,5 +1,6 @@
 from app import db
 from datetime import datetime
+import base64
 
 class Company(db.Model):
     """Company Model"""
@@ -24,6 +25,11 @@ class Company(db.Model):
     bank_ifsc = db.Column(db.String(11))
     bank_branch = db.Column(db.String(100))
     upi_id = db.Column(db.String(100))
+    
+    # Logo (stored as BLOB)
+    logo = db.Column(db.LargeBinary)  # Store logo as binary data
+    logo_filename = db.Column(db.String(255))  # Store original filename
+    logo_mime_type = db.Column(db.String(100))  # Store MIME type for proper display
     
     # Additional
     notes = db.Column(db.Text)
@@ -50,6 +56,11 @@ class Company(db.Model):
     
     def to_dict(self):
         """Convert model to dictionary"""
+        logo_data = None
+        if self.logo:
+            # Convert binary logo to base64 string for JSON response
+            logo_data = base64.b64encode(self.logo).decode('utf-8')
+        
         return {
             'id': self.id,
             'name': self.name,
@@ -64,6 +75,9 @@ class Company(db.Model):
             'bank_ifsc': self.bank_ifsc,
             'bank_branch': self.bank_branch,
             'upi_id': self.upi_id,
+            'logo_data': logo_data,
+            'logo_filename': self.logo_filename,
+            'logo_mime_type': self.logo_mime_type,
             'notes': self.notes,
             'is_active': self.is_active,
             'created_at': self.created_at.isoformat() if self.created_at else None,

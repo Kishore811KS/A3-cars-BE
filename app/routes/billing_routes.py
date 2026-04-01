@@ -118,12 +118,21 @@ def create_bill():
         # Create new bill instance with unique number
         bill = Bill()
         bill.bill_number = generate_unique_bill_number()
+        
+        # Customer Information
         bill.customer_name = data.get('customerName', 'Walk-in Customer')
         bill.customer_phone = data.get('customerPhone', '')
         bill.customer_email = data.get('customerEmail', '')
         bill.customer_gst = data.get('customerGST', '')
         bill.customer_address = data.get('customerAddress', '')
-        bill.customer_type = data.get('customerType', 'regular')  # Added customer_type field
+        bill.customer_type = data.get('customerType', 'regular')
+        
+        # Vehicle Information (NEW)
+        bill.vehicle_name = data.get('vehicleName', '')
+        bill.vehicle_number = data.get('vehicleNumber', '')
+        
+        # Created By (User ID from localStorage)
+        bill.created_by = data.get('createdBy', None)
         
         # Discount and tax settings
         bill.discount = float(data.get('discount', 0))
@@ -165,7 +174,6 @@ def create_bill():
                 sell_price=product.sell_price,
                 quantity=quantity,
                 total=item_total
-                # item_status will default to 'pending' as defined in the model
             )
             
             # Update product quantity
@@ -176,7 +184,7 @@ def create_bill():
                 'name': product.name,
                 'quantity': quantity,
                 'total': item_total,
-                'status': 'pending'  # Include status in response
+                'status': 'pending'
             })
         
         # Calculate all totals
@@ -238,11 +246,14 @@ def get_bills_with_pending_items():
                 'billNumber': bill.bill_number,
                 'customerName': bill.customer_name,
                 'customerPhone': bill.customer_phone,
-                'customerType': bill.customer_type,  # Added customer_type field
+                'customerType': bill.customer_type,
+                'vehicleName': bill.vehicle_name,
+                'vehicleNumber': bill.vehicle_number,
                 'total': round(bill.total, 2),
                 'paidAmount': round(bill.paid_amount, 2),
                 'pendingItems': pending_count,
-                'createdAt': bill.created_at.isoformat() if bill.created_at else None
+                'createdAt': bill.created_at.isoformat() if bill.created_at else None,
+                'createdBy': bill.created_by
             })
         
         return jsonify({
@@ -284,7 +295,10 @@ def get_pending_bill_items(bill_id):
             'success': True,
             'bill_id': bill_id,
             'bill_number': bill.bill_number,
-            'customer_type': bill.customer_type,  # Added customer_type field
+            'customer_type': bill.customer_type,
+            'customer_name': bill.customer_name,
+            'vehicle_name': bill.vehicle_name,
+            'vehicle_number': bill.vehicle_number,
             'items': items
         }), 200
         
@@ -375,7 +389,8 @@ def get_all_bills():
         start_date = request.args.get('start_date')
         end_date = request.args.get('end_date')
         customer = request.args.get('customer')
-        customer_type = request.args.get('customer_type')  # Added customer_type filter
+        customer_type = request.args.get('customer_type')
+        vehicle_number = request.args.get('vehicle_number')
         payment_method = request.args.get('payment_method')
         payment_status = request.args.get('payment_status')
         
@@ -388,8 +403,10 @@ def get_all_bills():
             query = query.filter(Bill.created_at <= datetime.fromisoformat(end_date))
         if customer:
             query = query.filter(Bill.customer_name.ilike(f'%{customer}%'))
-        if customer_type:  # Added customer_type filter
+        if customer_type:
             query = query.filter(Bill.customer_type == customer_type)
+        if vehicle_number:
+            query = query.filter(Bill.vehicle_number.ilike(f'%{vehicle_number}%'))
         if payment_method:
             query = query.filter(Bill.payment_method == payment_method)
         if payment_status:
@@ -415,7 +432,11 @@ def get_all_bills():
                 'billNumber': bill.bill_number,
                 'customerName': bill.customer_name,
                 'customerPhone': bill.customer_phone,
-                'customerType': bill.customer_type,  # Added customer_type field
+                'customerType': bill.customer_type,
+                'customerEmail': bill.customer_email,
+                'customerGST': bill.customer_gst,
+                'vehicleName': bill.vehicle_name,
+                'vehicleNumber': bill.vehicle_number,
                 'subtotal': round(bill.subtotal, 2),
                 'discount': round(bill.discount, 2),
                 'tax': round(bill.tax, 2),
@@ -425,7 +446,8 @@ def get_all_bills():
                 'paymentStatus': bill.payment_status,
                 'itemCount': len(bill.items),
                 'pendingItems': pending_count,
-                'createdAt': bill.created_at.isoformat() if bill.created_at else None
+                'createdAt': bill.created_at.isoformat() if bill.created_at else None,
+                'createdBy': bill.created_by
             })
         
         return jsonify({
@@ -438,6 +460,7 @@ def get_all_bills():
         
     except Exception as e:
         print(f"Get bills error: {str(e)}")
+        print(traceback.format_exc())
         return jsonify({"error": "Failed to fetch bills"}), 400
 
 
@@ -467,6 +490,9 @@ def get_bill_by_id(bill_id):
         bill_dict = bill.to_dict()
         bill_dict['items'] = items
         bill_dict['payments'] = [p.to_dict() for p in payments]
+        bill_dict['vehicleName'] = bill.vehicle_name
+        bill_dict['vehicleNumber'] = bill.vehicle_number
+        bill_dict['createdBy'] = bill.created_by
         
         return jsonify(bill_dict), 200
         
@@ -497,6 +523,9 @@ def get_bill_by_number(bill_number):
         
         bill_dict = bill.to_dict()
         bill_dict['items'] = items
+        bill_dict['vehicleName'] = bill.vehicle_name
+        bill_dict['vehicleNumber'] = bill.vehicle_number
+        bill_dict['createdBy'] = bill.created_by
         
         return jsonify(bill_dict), 200
         
@@ -624,7 +653,7 @@ def get_billing_statistics():
             func.sum(Bill.total).label('total')
         ).group_by(Bill.payment_method).all()
         
-        # Customer type distribution - NEW
+        # Customer type distribution
         customer_types = db.session.query(
             Bill.customer_type,
             func.count(Bill.id).label('count'),
@@ -654,7 +683,7 @@ def get_billing_statistics():
                 'count': pm[1],
                 'total': round(pm[2] or 0, 2)
             } for pm in payment_methods],
-            'customerTypes': [{  # New customer type statistics
+            'customerTypes': [{
                 'type': ct[0] or 'regular',
                 'count': ct[1],
                 'total': round(ct[2] or 0, 2)
@@ -663,14 +692,18 @@ def get_billing_statistics():
                 'id': b.id,
                 'billNumber': b.bill_number,
                 'customerName': b.customer_name,
-                'customerType': b.customer_type,  # Added customer_type field
+                'customerType': b.customer_type,
+                'vehicleName': b.vehicle_name,
+                'vehicleNumber': b.vehicle_number,
                 'total': round(b.total, 2),
-                'createdAt': b.created_at.isoformat()
+                'createdAt': b.created_at.isoformat(),
+                'createdBy': b.created_by
             } for b in recent_bills]
         }), 200
         
     except Exception as e:
         print(f"Statistics error: {str(e)}")
+        print(traceback.format_exc())
         return jsonify({"error": "Failed to fetch statistics"}), 400
 
 
@@ -750,3 +783,79 @@ def get_customer_type_summary():
     except Exception as e:
         print(f"Customer type summary error: {str(e)}")
         return jsonify({"error": "Failed to fetch customer type summary"}), 400
+
+
+# ------------------ GET VEHICLE SUMMARY ------------------
+@billing_bp.route("/billing/vehicles/summary", methods=["GET"])
+def get_vehicle_summary():
+    """Get summary of bills by vehicle number"""
+    try:
+        # Date range parameters
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+        
+        # Build query for vehicles with bills
+        query = db.session.query(
+            Bill.vehicle_number,
+            Bill.vehicle_name,
+            func.count(Bill.id).label('bill_count'),
+            func.sum(Bill.total).label('total_spent'),
+            func.avg(Bill.total).label('avg_bill_value')
+        ).filter(Bill.vehicle_number.isnot(None), Bill.vehicle_number != '')
+        
+        if start_date:
+            query = query.filter(Bill.created_at >= datetime.fromisoformat(start_date))
+        if end_date:
+            query = query.filter(Bill.created_at <= datetime.fromisoformat(end_date))
+        
+        results = query.group_by(Bill.vehicle_number, Bill.vehicle_name).order_by(func.sum(Bill.total).desc()).limit(20).all()
+        
+        vehicles = [{
+            'vehicleNumber': r[0],
+            'vehicleName': r[1] or '',
+            'billCount': r[2],
+            'totalSpent': round(r[3] or 0, 2),
+            'averageBillValue': round(r[4] or 0, 2)
+        } for r in results]
+        
+        return jsonify({
+            'success': True,
+            'vehicles': vehicles
+        }), 200
+        
+    except Exception as e:
+        print(f"Vehicle summary error: {str(e)}")
+        return jsonify({"error": "Failed to fetch vehicle summary"}), 400
+
+
+# ------------------ GET BILLS BY VEHICLE NUMBER ------------------
+@billing_bp.route("/billing/vehicles/<string:vehicle_number>/bills", methods=["GET"])
+def get_bills_by_vehicle(vehicle_number):
+    """Get all bills for a specific vehicle"""
+    try:
+        if not vehicle_number:
+            return jsonify({"error": "Vehicle number is required"}), 400
+        
+        bills = Bill.query.filter_by(vehicle_number=vehicle_number).order_by(Bill.created_at.desc()).all()
+        
+        result = [{
+            'id': b.id,
+            'billNumber': b.bill_number,
+            'customerName': b.customer_name,
+            'total': round(b.total, 2),
+            'paidAmount': round(b.paid_amount, 2),
+            'paymentStatus': b.payment_status,
+            'createdAt': b.created_at.isoformat() if b.created_at else None
+        } for b in bills]
+        
+        return jsonify({
+            'success': True,
+            'vehicleNumber': vehicle_number,
+            'vehicleName': bills[0].vehicle_name if bills else '',
+            'bills': result,
+            'count': len(result)
+        }), 200
+        
+    except Exception as e:
+        print(f"Get bills by vehicle error: {str(e)}")
+        return jsonify({"error": "Failed to fetch bills"}), 400

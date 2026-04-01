@@ -1,8 +1,8 @@
 """empty message
 
-Revision ID: 4166d6f520f6
+Revision ID: 609133a6e91c
 Revises: 
-Create Date: 2026-03-30 23:56:43.261658
+Create Date: 2026-04-01 16:09:16.038982
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '4166d6f520f6'
+revision = '609133a6e91c'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -27,6 +27,8 @@ def upgrade():
     sa.Column('customer_gst', sa.String(length=50), nullable=True),
     sa.Column('customer_address', sa.String(length=200), nullable=True),
     sa.Column('customer_type', sa.String(length=50), nullable=True),
+    sa.Column('vehicle_name', sa.String(length=100), nullable=True),
+    sa.Column('vehicle_number', sa.String(length=50), nullable=True),
     sa.Column('subtotal', sa.Float(), nullable=True),
     sa.Column('discount', sa.Float(), nullable=True),
     sa.Column('discount_type', sa.String(length=20), nullable=True),
@@ -43,32 +45,51 @@ def upgrade():
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('bill_number')
     )
-    op.create_table('employees',
+    op.create_table('companies',
     sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('employee_id', sa.String(length=50), nullable=False),
-    sa.Column('full_name', sa.String(length=200), nullable=False),
-    sa.Column('email', sa.String(length=100), nullable=False),
-    sa.Column('phone_number', sa.String(length=20), nullable=True),
-    sa.Column('department', sa.String(length=100), nullable=True),
-    sa.Column('designation', sa.String(length=100), nullable=True),
-    sa.Column('date_of_joining', sa.Date(), nullable=True),
-    sa.Column('user_type', sa.String(length=50), nullable=False),
-    sa.Column('aadhar_card_number', sa.String(length=20), nullable=True),
-    sa.Column('pan_card_number', sa.String(length=20), nullable=True),
-    sa.Column('address', sa.Text(), nullable=True),
-    sa.Column('emergency_contact', sa.String(length=100), nullable=True),
-    sa.Column('blood_group', sa.String(length=5), nullable=True),
-    sa.Column('marital_status', sa.String(length=20), nullable=True),
-    sa.Column('aadhar_attachment', sa.String(length=255), nullable=True),
-    sa.Column('pan_attachment', sa.String(length=255), nullable=True),
+    sa.Column('name', sa.String(length=200), nullable=False),
+    sa.Column('address', sa.Text(), nullable=False),
+    sa.Column('phone', sa.String(length=20), nullable=False),
+    sa.Column('alternate_phone', sa.String(length=20), nullable=True),
+    sa.Column('email', sa.String(length=100), nullable=True),
+    sa.Column('gst_number', sa.String(length=15), nullable=True),
+    sa.Column('registration_date', sa.Date(), nullable=True),
+    sa.Column('bank_name', sa.String(length=100), nullable=True),
+    sa.Column('bank_account_number', sa.String(length=50), nullable=True),
+    sa.Column('bank_ifsc', sa.String(length=11), nullable=True),
+    sa.Column('bank_branch', sa.String(length=100), nullable=True),
+    sa.Column('upi_id', sa.String(length=100), nullable=True),
+    sa.Column('logo', sa.LargeBinary(), nullable=True),
+    sa.Column('logo_filename', sa.String(length=255), nullable=True),
+    sa.Column('logo_mime_type', sa.String(length=100), nullable=True),
+    sa.Column('notes', sa.Text(), nullable=True),
+    sa.Column('is_active', sa.Boolean(), nullable=True),
+    sa.Column('deleted_at', sa.DateTime(), nullable=True),
     sa.Column('created_at', sa.DateTime(), nullable=True),
     sa.Column('updated_at', sa.DateTime(), nullable=True),
     sa.PrimaryKeyConstraint('id'),
-    sa.UniqueConstraint('email')
+    sa.UniqueConstraint('gst_number')
     )
-    with op.batch_alter_table('employees', schema=None) as batch_op:
-        batch_op.create_index(batch_op.f('ix_employees_employee_id'), ['employee_id'], unique=True)
+    with op.batch_alter_table('companies', schema=None) as batch_op:
+        batch_op.create_index(batch_op.f('ix_companies_name'), ['name'], unique=False)
 
+    op.create_table('enquiries',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('customer_name', sa.String(length=200), nullable=False),
+    sa.Column('contact_number', sa.String(length=20), nullable=False),
+    sa.Column('email', sa.String(length=150), nullable=True),
+    sa.Column('age', sa.Integer(), nullable=True),
+    sa.Column('meetup_date', sa.Date(), nullable=False),
+    sa.Column('is_coming_today', sa.Boolean(), nullable=True),
+    sa.Column('car_interest', sa.String(length=200), nullable=True),
+    sa.Column('notes', sa.Text(), nullable=True),
+    sa.Column('status', sa.String(length=50), nullable=True),
+    sa.Column('called', sa.Boolean(), nullable=True),
+    sa.Column('next_followup_date', sa.Date(), nullable=True),
+    sa.Column('created_at', sa.DateTime(), nullable=True),
+    sa.Column('updated_at', sa.DateTime(), nullable=True),
+    sa.PrimaryKeyConstraint('id')
+    )
     op.create_table('invoices',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('invoice_number', sa.String(length=50), nullable=False),
@@ -163,21 +184,6 @@ def upgrade():
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('name')
     )
-    op.create_table('attendance',
-    sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('employee_id', sa.Integer(), nullable=False),
-    sa.Column('date', sa.Date(), nullable=False),
-    sa.Column('check_in_time', sa.DateTime(), nullable=True),
-    sa.Column('check_out_time', sa.DateTime(), nullable=True),
-    sa.Column('status', sa.String(length=20), nullable=True),
-    sa.Column('total_hours', sa.Float(), nullable=True),
-    sa.Column('overtime', sa.Float(), nullable=True),
-    sa.Column('notes', sa.Text(), nullable=True),
-    sa.Column('created_at', sa.DateTime(), nullable=True),
-    sa.Column('updated_at', sa.DateTime(), nullable=True),
-    sa.ForeignKeyConstraint(['employee_id'], ['employees.id'], ),
-    sa.PrimaryKeyConstraint('id')
-    )
     op.create_table('bill_items',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('bill_id', sa.Integer(), nullable=False),
@@ -193,6 +199,36 @@ def upgrade():
     sa.ForeignKeyConstraint(['product_id'], ['products.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
+    op.create_table('employees',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('employee_id', sa.String(length=50), nullable=False),
+    sa.Column('full_name', sa.String(length=200), nullable=False),
+    sa.Column('email', sa.String(length=100), nullable=False),
+    sa.Column('password_hash', sa.String(length=200), nullable=True),
+    sa.Column('phone_number', sa.String(length=20), nullable=True),
+    sa.Column('department', sa.String(length=100), nullable=True),
+    sa.Column('designation', sa.String(length=100), nullable=True),
+    sa.Column('date_of_joining', sa.Date(), nullable=True),
+    sa.Column('current_company', sa.String(length=200), nullable=True),
+    sa.Column('company_id', sa.Integer(), nullable=True),
+    sa.Column('user_type', sa.String(length=50), nullable=False),
+    sa.Column('aadhar_card_number', sa.String(length=20), nullable=True),
+    sa.Column('pan_card_number', sa.String(length=20), nullable=True),
+    sa.Column('address', sa.Text(), nullable=True),
+    sa.Column('emergency_contact', sa.String(length=100), nullable=True),
+    sa.Column('blood_group', sa.String(length=5), nullable=True),
+    sa.Column('marital_status', sa.String(length=20), nullable=True),
+    sa.Column('aadhar_attachment', sa.String(length=255), nullable=True),
+    sa.Column('pan_attachment', sa.String(length=255), nullable=True),
+    sa.Column('created_at', sa.DateTime(), nullable=True),
+    sa.Column('updated_at', sa.DateTime(), nullable=True),
+    sa.ForeignKeyConstraint(['company_id'], ['companies.id'], ),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('email')
+    )
+    with op.batch_alter_table('employees', schema=None) as batch_op:
+        batch_op.create_index(batch_op.f('ix_employees_employee_id'), ['employee_id'], unique=True)
+
     op.create_table('invoice_items',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('invoice_id', sa.Integer(), nullable=False),
@@ -268,6 +304,21 @@ def upgrade():
     sa.ForeignKeyConstraint(['created_by'], ['login.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
+    op.create_table('attendance',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('employee_id', sa.Integer(), nullable=False),
+    sa.Column('date', sa.Date(), nullable=False),
+    sa.Column('check_in_time', sa.DateTime(), nullable=True),
+    sa.Column('check_out_time', sa.DateTime(), nullable=True),
+    sa.Column('status', sa.String(length=20), nullable=True),
+    sa.Column('total_hours', sa.Float(), nullable=True),
+    sa.Column('overtime', sa.Float(), nullable=True),
+    sa.Column('notes', sa.Text(), nullable=True),
+    sa.Column('created_at', sa.DateTime(), nullable=True),
+    sa.Column('updated_at', sa.DateTime(), nullable=True),
+    sa.ForeignKeyConstraint(['employee_id'], ['employees.id'], ),
+    sa.PrimaryKeyConstraint('id')
+    )
     op.create_table('items',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('name', sa.String(length=100), nullable=False),
@@ -290,22 +341,27 @@ def upgrade():
 def downgrade():
     # ### commands auto generated by Alembic - please adjust! ###
     op.drop_table('items')
+    op.drop_table('attendance')
     op.drop_table('suppliers')
     op.drop_table('service_bill_items')
     op.drop_table('quotation_items')
     op.drop_table('payments')
     op.drop_table('invoice_items')
+    with op.batch_alter_table('employees', schema=None) as batch_op:
+        batch_op.drop_index(batch_op.f('ix_employees_employee_id'))
+
+    op.drop_table('employees')
     op.drop_table('bill_items')
-    op.drop_table('attendance')
     op.drop_table('user_types')
     op.drop_table('services')
     op.drop_table('quotations')
     op.drop_table('products')
     op.drop_table('login')
     op.drop_table('invoices')
-    with op.batch_alter_table('employees', schema=None) as batch_op:
-        batch_op.drop_index(batch_op.f('ix_employees_employee_id'))
+    op.drop_table('enquiries')
+    with op.batch_alter_table('companies', schema=None) as batch_op:
+        batch_op.drop_index(batch_op.f('ix_companies_name'))
 
-    op.drop_table('employees')
+    op.drop_table('companies')
     op.drop_table('bills')
     # ### end Alembic commands ###

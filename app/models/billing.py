@@ -14,7 +14,11 @@ class Bill(db.Model):
     customer_email = db.Column(db.String(100))
     customer_gst = db.Column(db.String(50))
     customer_address = db.Column(db.String(200))
-    customer_type = db.Column(db.String(50), default='regular')  # regular, wholesale, vip, corporate
+    customer_type = db.Column(db.String(50), default='regular')  # regular, wholesale, vip, corporate, internal
+    
+    # Vehicle Information (NEW)
+    vehicle_name = db.Column(db.String(100))
+    vehicle_number = db.Column(db.String(50))
     
     # Bill Summary
     subtotal = db.Column(db.Float, default=0)
@@ -30,28 +34,13 @@ class Bill(db.Model):
     payment_method = db.Column(db.String(50), default='cash')  # cash, card, upi, credit
     payment_status = db.Column(db.String(20), default='pending')  # paid, partial, pending
     
-    # Metadata - REMOVED the foreign key
+    # Metadata
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    created_by = db.Column(db.Integer, nullable=True)  # Just store user ID without foreign key
+    created_by = db.Column(db.Integer, nullable=True)  # User ID who created the bill
     
     # Relationships
     items = db.relationship('BillItem', backref='bill', lazy=True, cascade='all, delete-orphan')
-    
-    def generate_bill_number(self):
-        """Generate unique bill number"""
-        now = datetime.now()
-        date_str = now.strftime('%Y%m%d')
-        
-        # Get count of bills created today
-        today_start = datetime(now.year, now.month, now.day, 0, 0, 0)
-        today_end = datetime(now.year, now.month, now.day, 23, 59, 59)
-        
-        bill_count = Bill.query.filter(
-            Bill.created_at.between(today_start, today_end)
-        ).count() + 1
-        
-        return f"BILL-{date_str}-{str(bill_count).zfill(4)}"
     
     def calculate_totals(self):
         """Calculate all bill totals"""
@@ -92,6 +81,10 @@ class Bill(db.Model):
                 'address': self.customer_address,
                 'type': self.customer_type
             },
+            'vehicle': {
+                'name': self.vehicle_name,
+                'number': self.vehicle_number
+            },
             'summary': {
                 'subtotal': round(self.subtotal, 2),
                 'discount': round(self.discount, 2),
@@ -108,7 +101,8 @@ class Bill(db.Model):
             },
             'items': [item.to_dict() for item in self.items],
             'createdAt': self.created_at.isoformat() if self.created_at else None,
-            'updatedAt': self.updated_at.isoformat() if self.updated_at else None
+            'updatedAt': self.updated_at.isoformat() if self.updated_at else None,
+            'createdBy': self.created_by
         }
 
 
@@ -127,7 +121,7 @@ class BillItem(db.Model):
     quantity = db.Column(db.Integer, nullable=False)
     total = db.Column(db.Float, nullable=False)
     
-    # Item Status - Added new field with default 'pending'
+    # Item Status
     item_status = db.Column(db.String(20), nullable=False, default='pending')  # pending, completed, cancelled
     
     # Relationship
@@ -143,7 +137,7 @@ class BillItem(db.Model):
             'sellPrice': round(self.sell_price, 2),
             'quantity': self.quantity,
             'total': round(self.total, 2),
-            'itemStatus': self.item_status  # Will always be 'pending' by default
+            'itemStatus': self.item_status
         }
 
 
@@ -152,11 +146,11 @@ class Payment(db.Model):
     
     id = db.Column(db.Integer, primary_key=True)
     bill_id = db.Column(db.Integer, db.ForeignKey('bills.id'), nullable=False)
-    payment_id = db.Column(db.String(100), unique=True)  # Transaction ID from payment gateway
+    payment_id = db.Column(db.String(100), unique=True)
     amount = db.Column(db.Float, nullable=False)
-    method = db.Column(db.String(50), nullable=False)  # cash, card, upi, credit
-    status = db.Column(db.String(20), default='completed')  # completed, pending, failed, refunded
-    reference = db.Column(db.String(100))  # Check number, UPI reference, etc.
+    method = db.Column(db.String(50), nullable=False)
+    status = db.Column(db.String(20), default='completed')
+    reference = db.Column(db.String(100))
     notes = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
