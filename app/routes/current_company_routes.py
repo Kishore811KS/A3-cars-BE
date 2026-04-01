@@ -5,8 +5,11 @@ from datetime import datetime
 import traceback
 import re
 
+from flask_cors import CORS
+
 # Create blueprint
-company_bp = Blueprint('company', __name__, url_prefix='/api/companies')
+company_bp = Blueprint('company', __name__)
+CORS(company_bp)
 
 def validate_gst_number(gst_number):
     """Validate GST number format"""

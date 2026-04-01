@@ -13,6 +13,7 @@ jwt = JWTManager()
 
 def create_app():
     app = Flask(__name__)
+    print("Creating Flask App...")
     app.config.from_object(Config)
 
     # Initialize database
@@ -26,7 +27,7 @@ def create_app():
     CORS(
         app,
         supports_credentials=True,
-        resources={r"/api/*": {"origins": "*"}}
+        resources={r"/*": {"origins": "*"}}
     )
 
     # Import models so Flask-Migrate detects them
@@ -44,18 +45,20 @@ def create_app():
     from app.routes.employee_routes import employee_bp
     from app.routes.attendance_routes import attendance_bp
     from app.routes.current_company_routes import company_bp
+    from app.routes.enquiry_routes import enquiry_bp
 
     app.register_blueprint(login_bp, url_prefix="/api")
     app.register_blueprint(product_bp, url_prefix="/api")
     app.register_blueprint(billing_bp, url_prefix="/api")
-    app.register_blueprint(supplier_bp)
+    app.register_blueprint(supplier_bp, url_prefix="/api")
     app.register_blueprint(quotation_bp, url_prefix='/api')
     app.register_blueprint(invoice_bp, url_prefix='/api')
-    app.register_blueprint(service_bp)
-    app.register_blueprint(user_type_bp)
-    app.register_blueprint(employee_bp)
-    app.register_blueprint(attendance_bp)
-    app.register_blueprint(company_bp) 
+    app.register_blueprint(service_bp, url_prefix="/api")
+    app.register_blueprint(user_type_bp, url_prefix="/api")
+    app.register_blueprint(employee_bp, url_prefix="/api")
+    app.register_blueprint(attendance_bp, url_prefix="/api/attendance")
+    app.register_blueprint(company_bp, url_prefix="/api/companies") 
+    app.register_blueprint(enquiry_bp, url_prefix="/api")
 
     # Health Check Route
     @app.route('/api/health', methods=['GET'])

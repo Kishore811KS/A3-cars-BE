@@ -56,7 +56,7 @@ class Employee(db.Model):
             'phone_number': self.phone_number,
             'department': self.department,
             'designation': self.designation,
-            'date_of_joining': self.date_of_joining.isoformat() if self.date_of_joining else None,
+            'date_of_joining': self.date_of_joining.isoformat() if hasattr(self.date_of_joining, 'isoformat') else self.date_of_joining,
             'current_company': self.current_company,
             'company_id': self.company_id,
             'user_type': self.user_type,
