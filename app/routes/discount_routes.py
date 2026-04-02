@@ -3,10 +3,10 @@ from app.models import DiscountRange, DiscountLog
 from app import db
 from datetime import datetime
 import traceback
+import json
 
 # Create blueprint
 discount_bp = Blueprint('discount', __name__, url_prefix='/api')
-
 
 
 @discount_bp.route('/discounts', methods=['GET'])
@@ -66,7 +66,8 @@ def create_discount_range():
         log_entry = DiscountLog(
             range_id=new_range.id,
             action='CREATE',
-            old_values=None
+            old_values=None,
+            new_values=json.dumps(new_range.to_dict())
         )
         db.session.add(log_entry)
         db.session.commit()
@@ -78,6 +79,8 @@ def create_discount_range():
         
     except Exception as e:
         db.session.rollback()
+        print(f"Error creating discount range: {str(e)}")
+        print(traceback.format_exc())
         return jsonify({"error": str(e)}), 500
 
 
@@ -92,12 +95,7 @@ def update_discount_range(range_id):
             return jsonify({"error": "Discount range not found"}), 404
         
         # Store old values for logging
-        old_values = {
-            'min': discount_range.min_amount,
-            'max': discount_range.max_amount,
-            'discount': discount_range.discount_percent,
-            'isInfinite': discount_range.is_infinite
-        }
+        old_values = discount_range.to_dict()
         
         # Update fields
         if 'min' in data:
@@ -138,7 +136,8 @@ def update_discount_range(range_id):
         log_entry = DiscountLog(
             range_id=range_id,
             action='UPDATE',
-            old_values=str(old_values)
+            old_values=json.dumps(old_values),
+            new_values=json.dumps(discount_range.to_dict())
         )
         db.session.add(log_entry)
         db.session.commit()
@@ -150,6 +149,8 @@ def update_discount_range(range_id):
         
     except Exception as e:
         db.session.rollback()
+        print(f"Error updating discount range: {str(e)}")
+        print(traceback.format_exc())
         return jsonify({"error": str(e)}), 500
 
 
@@ -163,12 +164,7 @@ def delete_discount_range(range_id):
             return jsonify({"error": "Discount range not found"}), 404
         
         # Store values before deletion for logging
-        old_values = {
-            'min': discount_range.min_amount,
-            'max': discount_range.max_amount,
-            'discount': discount_range.discount_percent,
-            'isInfinite': discount_range.is_infinite
-        }
+        old_values = discount_range.to_dict()
         
         db.session.delete(discount_range)
         db.session.commit()
@@ -177,7 +173,8 @@ def delete_discount_range(range_id):
         log_entry = DiscountLog(
             range_id=range_id,
             action='DELETE',
-            old_values=str(old_values)
+            old_values=json.dumps(old_values),
+            new_values=None
         )
         db.session.add(log_entry)
         db.session.commit()
@@ -186,6 +183,7 @@ def delete_discount_range(range_id):
         
     except Exception as e:
         db.session.rollback()
+        print(f"Error deleting discount range: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 
@@ -205,7 +203,7 @@ def calculate_discount():
         
         for r in ranges:
             if r.min_amount <= amount:
-                if r.is_infinite or (r.max_amount is not None and amount < r.max_amount):
+                if r.is_infinite or (r.max_amount is not None and amount <= r.max_amount):
                     matched_range = r
                     break
         
@@ -230,6 +228,7 @@ def calculate_discount():
         }), 200
         
     except Exception as e:
+        print(f"Error calculating discount: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 
@@ -259,48 +258,6 @@ def validate_range_endpoint():
         return jsonify({"valid": False, "error": str(e)}), 500
 
 
-@discount_bp.route('/discounts/reset-default', methods=['POST'])
-def reset_to_defaults():
-    """Reset discount ranges to default values"""
-    try:
-        # Delete all existing ranges
-        DiscountRange.query.delete()
-        db.session.commit()
-        
-        # Create default ranges
-        ranges = []
-        for default in DEFAULT_RANGES:
-            new_range = DiscountRange(
-                min_amount=default['min'],
-                max_amount=default['max'],
-                discount_percent=default['discount'],
-                is_infinite=default['isInfinite'],
-                is_active=True
-            )
-            db.session.add(new_range)
-            ranges.append(new_range)
-        
-        db.session.commit()
-        
-        # Log the reset
-        log_entry = DiscountLog(
-            range_id=None,
-            action='BULK_CREATE',
-            old_values=None
-        )
-        db.session.add(log_entry)
-        db.session.commit()
-        
-        return jsonify({
-            "message": "Reset to default ranges successfully",
-            "ranges": [r.to_dict() for r in ranges]
-        }), 200
-        
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"error": str(e)}), 500
-
-
 def validate_range_overlap(min_amount, max_amount, is_infinite, exclude_id=None):
     """Check if a range overlaps with existing ranges"""
     try:
@@ -313,12 +270,11 @@ def validate_range_overlap(min_amount, max_amount, is_infinite, exclude_id=None)
         
         # Check for overlaps
         for existing in existing_ranges:
-            # Check if ranges overlap
             if overlaps(min_amount, max_amount, is_infinite, 
                        existing.min_amount, existing.max_amount, existing.is_infinite):
                 return {
                     "valid": False,
-                    "error": f"Range overlaps with existing range: ₹{existing.min_amount} - {'∞' if existing.is_infinite else f'₹{existing.max_amount}'}"
+                    "error": f"Range overlaps with existing range: ₹{existing.min_amount:,.2f} - {'∞' if existing.is_infinite else f'₹{existing.max_amount:,.2f}'}"
                 }
         
         return {"valid": True}
