@@ -47,6 +47,7 @@ def create_app():
     from app.routes.current_company_routes import company_bp
     from app.routes.enquiry_routes import enquiry_bp
     from app.routes.discount_routes import discount_bp  # ADD THIS LINE
+    from app.routes.permissions_routes import permissions_bp
 
     app.register_blueprint(login_bp, url_prefix="/api")
     app.register_blueprint(product_bp, url_prefix="/api")
@@ -61,6 +62,7 @@ def create_app():
     app.register_blueprint(company_bp)
     app.register_blueprint(enquiry_bp,url_prefix="/api") 
     app.register_blueprint(discount_bp)
+    app.register_blueprint(permissions_bp)
 
     # Health Check Route
     @app.route('/api/health', methods=['GET'])

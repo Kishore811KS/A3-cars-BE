@@ -7,6 +7,8 @@ from app.models.current_company import Company  # Import Company model
 from datetime import datetime
 import os
 import traceback
+import json
+from sqlalchemy import func
 from werkzeug.utils import secure_filename
 import uuid
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -15,8 +17,10 @@ import secrets  # Add this import for generating secret key
 # Create blueprint
 employee_bp = Blueprint('employee', __name__, url_prefix='/api')
 
-# Configure upload folder
-UPLOAD_FOLDER = 'uploads'
+# UPLOAD_FOLDER is retrieved from current_app.config during request handling
+# but we keep a fallback for the module level if needed
+UPLOAD_FOLDER = 'uploads' 
+
 ALLOWED_EXTENSIONS = {'pdf', 'jpg', 'jpeg', 'png', 'doc', 'docx'}
 
 # Function to ensure secret key is set
@@ -53,11 +57,15 @@ def save_file(file, prefix=''):
         extension = original_filename.rsplit('.', 1)[1].lower()
         filename = f"{prefix}_{uuid.uuid4().hex}_{original_filename}"
         
-        # Create upload directory if it doesn't exist
-        os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+        # Use absolute path from config if available, fallback to relative
+        upload_dir = current_app.config.get('UPLOAD_FOLDER', UPLOAD_FOLDER)
         
-        filepath = os.path.join(UPLOAD_FOLDER, filename)
+        # Create upload directory if it doesn't exist
+        os.makedirs(upload_dir, exist_ok=True)
+        
+        filepath = os.path.join(upload_dir, filename)
         file.save(filepath)
+
         
         return filename
     return None
@@ -124,6 +132,15 @@ def employee_login():
         session['company_name'] = employee.current_company
         session['logged_in'] = True
         
+        # Fetch permissions
+        user_type_data = UserType.query.filter(func.lower(UserType.name) == func.lower(employee.user_type)).first()
+        permissions = {}
+        if user_type_data and user_type_data.permissions:
+            try:
+                permissions = json.loads(user_type_data.permissions)
+            except Exception:
+                permissions = {}
+
         # Return user info
         return jsonify({
             'message': 'Login successful',
@@ -133,6 +150,7 @@ def employee_login():
                 'full_name': employee.full_name,
                 'email': employee.email,
                 'user_type': employee.user_type,
+                'permissions': permissions,
                 'department': employee.department,
                 'designation': employee.designation,
                 'current_company': employee.current_company,
@@ -156,13 +174,24 @@ def employee_logout():
 def check_login():
     """Check if user is logged in"""
     if 'user_id' in session:
+        # Fetch permissions
+        user_type_name = session.get('user_type')
+        user_type_data = UserType.query.filter(func.lower(UserType.name) == func.lower(user_type_name)).first() if user_type_name else None
+        permissions = {}
+        if user_type_data and user_type_data.permissions:
+            try:
+                permissions = json.loads(user_type_data.permissions)
+            except Exception:
+                permissions = {}
+
         return jsonify({
             'logged_in': True,
             'user': {
                 'id': session.get('user_id'),
                 'email': session.get('user_email'),
                 'full_name': session.get('user_name'),
-                'user_type': session.get('user_type'),
+                'user_type': user_type_name,
+                'permissions': permissions,
                 'company_name': session.get('company_name')
             }
         }), 200
@@ -181,6 +210,15 @@ def get_current_user():
             session.clear()
             return jsonify({'error': 'User not found'}), 404
         
+        # Fetch permissions
+        user_type_data = UserType.query.filter(func.lower(UserType.name) == func.lower(employee.user_type)).first()
+        permissions = {}
+        if user_type_data and user_type_data.permissions:
+            try:
+                permissions = json.loads(user_type_data.permissions)
+            except Exception:
+                permissions = {}
+
         return jsonify({
             'user': {
                 'id': employee.id,
@@ -188,6 +226,7 @@ def get_current_user():
                 'full_name': employee.full_name,
                 'email': employee.email,
                 'user_type': employee.user_type,
+                'permissions': permissions,
                 'department': employee.department,
                 'designation': employee.designation,
                 'current_company': employee.current_company,
@@ -461,15 +500,18 @@ def delete_employee(id):
             return jsonify({'error': 'Employee not found'}), 404
         
         # Delete attached files
+        upload_dir = current_app.config.get('UPLOAD_FOLDER', UPLOAD_FOLDER)
+        
         if employee.aadhar_attachment:
-            file_path = os.path.join(UPLOAD_FOLDER, employee.aadhar_attachment)
+            file_path = os.path.join(upload_dir, employee.aadhar_attachment)
             if os.path.exists(file_path):
                 os.remove(file_path)
         
         if employee.pan_attachment:
-            file_path = os.path.join(UPLOAD_FOLDER, employee.pan_attachment)
+            file_path = os.path.join(upload_dir, employee.pan_attachment)
             if os.path.exists(file_path):
                 os.remove(file_path)
+
         
         db.session.delete(employee)
         db.session.commit()
@@ -516,12 +558,15 @@ def download_file(filename):
         if '..' in filename or filename.startswith('/'):
             return jsonify({'error': 'Invalid filename'}), 400
             
+        upload_dir = current_app.config.get('UPLOAD_FOLDER', UPLOAD_FOLDER)
+            
         return send_from_directory(
-            directory=UPLOAD_FOLDER,
+            directory=upload_dir,
             path=filename,
             as_attachment=True,
             download_name=filename
         )
+
     except FileNotFoundError:
         print(f"File not found: {filename}")
         return jsonify({'error': 'File not found'}), 404

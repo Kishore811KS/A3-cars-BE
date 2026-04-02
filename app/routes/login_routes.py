@@ -1,8 +1,10 @@
 from flask import Blueprint, request, jsonify
 from flask_cors import CORS
 from flask_jwt_extended import create_access_token
+import json
 
 from app.models.login import db, login
+from app.models.usertype import UserType
 
 login_bp = Blueprint('login_bp', __name__)
 CORS(login_bp)   # Enable CORS for this blueprint
@@ -54,12 +56,24 @@ def user_login():
     # ✅ Generate JWT token
     access_token = create_access_token(identity=user.id)
 
+    # Fetch Admin permissions as default for login users
+    admin_type = UserType.query.filter_by(name='Admin').first()
+    permissions = {}
+    if admin_type and admin_type.permissions:
+        try:
+            permissions = json.loads(admin_type.permissions)
+        except Exception:
+            permissions = {}
+
     # ✅ Password NOT returned
     return jsonify({
         'user': {
             'id': user.id,
             'username': user.username,
-            'email': user.email
+            'email': user.email,
+            'user_type': 'Admin',
+            'permissions': permissions
         },
         'access_token': access_token
     }), 200
+
