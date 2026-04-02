@@ -46,6 +46,7 @@ MODULES_JSON = {
       "submodules": [
         { "id": "add_supplier", "name": "Add Supplier" },
         { "id": "supplier_list", "name": "Supplier List" },
+        { "id": "payment_tracking", "name": "Payment Tracking" },
         { "id": "employee", "name": "Employee" },
         { "id": "user_type", "name": "User Type" },
         { "id": "attendance", "name": "Attendance" },
