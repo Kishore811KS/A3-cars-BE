@@ -12,11 +12,8 @@ import uuid
 from werkzeug.security import generate_password_hash, check_password_hash
 import secrets  # Add this import for generating secret key
 
-from flask_cors import CORS
-
 # Create blueprint
-employee_bp = Blueprint('employee', __name__)
-CORS(employee_bp)
+employee_bp = Blueprint('employee', __name__, url_prefix='/api')
 
 # Configure upload folder
 UPLOAD_FOLDER = 'uploads'
@@ -218,10 +215,9 @@ def get_employees():
             
         return jsonify([employee.to_dict() for employee in employees]), 200
     except Exception as e:
-        import traceback
-        error_details = traceback.format_exc()
-        print(f"DEBUG Error in get_employees: {error_details}")
-        return jsonify({'error': str(e), 'details': error_details}), 500
+        print(f"Error in get_employees: {str(e)}")
+        print(traceback.format_exc())
+        return jsonify({'error': 'Failed to fetch employees'}), 500
 
 @employee_bp.route('/employees/<int:id>', methods=['GET'])
 def get_employee(id):

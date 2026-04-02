@@ -1,8 +1,8 @@
 """empty message
 
-Revision ID: 609133a6e91c
+Revision ID: 027e77548666
 Revises: 
-Create Date: 2026-04-01 16:09:16.038982
+Create Date: 2026-04-01 21:23:18.521766
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '609133a6e91c'
+revision = '027e77548666'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -73,6 +73,19 @@ def upgrade():
     with op.batch_alter_table('companies', schema=None) as batch_op:
         batch_op.create_index(batch_op.f('ix_companies_name'), ['name'], unique=False)
 
+    op.create_table('discount_ranges',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('min_amount', sa.Float(), nullable=False),
+    sa.Column('max_amount', sa.Float(), nullable=True),
+    sa.Column('discount_percent', sa.Float(), nullable=False),
+    sa.Column('is_infinite', sa.Boolean(), nullable=True),
+    sa.Column('is_active', sa.Boolean(), nullable=True),
+    sa.Column('created_by', sa.Integer(), nullable=True),
+    sa.Column('updated_by', sa.Integer(), nullable=True),
+    sa.Column('created_at', sa.DateTime(), nullable=True),
+    sa.Column('updated_at', sa.DateTime(), nullable=True),
+    sa.PrimaryKeyConstraint('id')
+    )
     op.create_table('enquiries',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('customer_name', sa.String(length=200), nullable=False),
@@ -179,6 +192,7 @@ def upgrade():
     op.create_table('user_types',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('name', sa.String(length=100), nullable=False),
+    sa.Column('permissions', sa.Text(), nullable=True),
     sa.Column('created_at', sa.DateTime(), nullable=True),
     sa.Column('updated_at', sa.DateTime(), nullable=True),
     sa.PrimaryKeyConstraint('id'),
@@ -197,6 +211,19 @@ def upgrade():
     sa.Column('item_status', sa.String(length=20), nullable=False),
     sa.ForeignKeyConstraint(['bill_id'], ['bills.id'], ),
     sa.ForeignKeyConstraint(['product_id'], ['products.id'], ),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_table('discount_logs',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('range_id', sa.Integer(), nullable=True),
+    sa.Column('action', sa.String(length=20), nullable=False),
+    sa.Column('old_values', sa.Text(), nullable=True),
+    sa.Column('new_values', sa.Text(), nullable=True),
+    sa.Column('changed_by', sa.Integer(), nullable=True),
+    sa.Column('ip_address', sa.String(length=45), nullable=True),
+    sa.Column('user_agent', sa.String(length=255), nullable=True),
+    sa.Column('created_at', sa.DateTime(), nullable=True),
+    sa.ForeignKeyConstraint(['range_id'], ['discount_ranges.id'], ondelete='SET NULL'),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_table('employees',
@@ -351,6 +378,7 @@ def downgrade():
         batch_op.drop_index(batch_op.f('ix_employees_employee_id'))
 
     op.drop_table('employees')
+    op.drop_table('discount_logs')
     op.drop_table('bill_items')
     op.drop_table('user_types')
     op.drop_table('services')
@@ -359,6 +387,7 @@ def downgrade():
     op.drop_table('login')
     op.drop_table('invoices')
     op.drop_table('enquiries')
+    op.drop_table('discount_ranges')
     with op.batch_alter_table('companies', schema=None) as batch_op:
         batch_op.drop_index(batch_op.f('ix_companies_name'))
 

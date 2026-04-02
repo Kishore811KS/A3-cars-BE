@@ -9,10 +9,7 @@ import traceback
 import random
 import string
 
-from flask_cors import CORS
-
 billing_bp = Blueprint("billing_bp", __name__)
-CORS(billing_bp)
 
 def generate_unique_bill_number():
     """Generate a unique random bill number"""

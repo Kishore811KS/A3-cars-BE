@@ -6,11 +6,8 @@ import traceback
 import re
 import base64
 
-from flask_cors import CORS
-
 # Create blueprint
-company_bp = Blueprint('company', __name__)
-CORS(company_bp)
+company_bp = Blueprint('company', __name__, url_prefix='/api/companies')
 
 # Allowed MIME types for logo uploads
 ALLOWED_MIME_TYPES = {'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'}

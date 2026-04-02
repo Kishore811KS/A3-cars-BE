@@ -9,10 +9,7 @@ import traceback
 import random
 import string
 
-from flask_cors import CORS
-
-service_bp = Blueprint('service', __name__)
-CORS(service_bp)
+service_bp = Blueprint('service', __name__, url_prefix='/api')
 logger = logging.getLogger(__name__)
 
 # ==================== Service Management Routes ====================

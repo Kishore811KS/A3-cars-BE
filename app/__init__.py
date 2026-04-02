@@ -46,7 +46,6 @@ def create_app():
     from app.routes.attendance_routes import attendance_bp
     from app.routes.current_company_routes import company_bp
     from app.routes.enquiry_routes import enquiry_bp
-    from app.routes.attendance_routes import attendance_bp  # ADD THIS LINE
     from app.routes.discount_routes import discount_bp  # ADD THIS LINE
 
     app.register_blueprint(login_bp, url_prefix="/api")
@@ -57,11 +56,10 @@ def create_app():
     app.register_blueprint(invoice_bp, url_prefix='/api')
     app.register_blueprint(service_bp)
     app.register_blueprint(user_type_bp)
-    app.register_blueprint(employee_bp)
+    app.register_blueprint(employee_bp,url_prefix="/api")
     app.register_blueprint(attendance_bp)
     app.register_blueprint(company_bp)
     app.register_blueprint(enquiry_bp,url_prefix="/api") 
-    app.register_blueprint(attendance_bp) 
     app.register_blueprint(discount_bp)
 
     # Health Check Route

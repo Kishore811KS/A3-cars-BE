@@ -4,11 +4,8 @@ from app.models.usertype import UserType
 from sqlalchemy import func
 import traceback
 
-from flask_cors import CORS
-
 # Create blueprint
-user_type_bp = Blueprint('user_type', __name__)
-CORS(user_type_bp)
+user_type_bp = Blueprint('user_type', __name__, url_prefix='/api')
 
 @user_type_bp.route('/user-types', methods=['GET'])
 def get_user_types():
@@ -21,8 +18,6 @@ def get_user_types():
         print(traceback.format_exc())
         return jsonify({'error': 'Failed to fetch user types'}), 500
 
-import json  # Added import for JSON handling
-
 @user_type_bp.route('/user-types', methods=['POST'])
 def create_user_type():
     """Create a new user type"""
@@ -33,8 +28,6 @@ def create_user_type():
             return jsonify({'error': 'Name is required'}), 400
         
         name = data['name'].strip()
-        base_template = data.get('base_template', 'Staff')
-        permissions = data.get('permissions', {})
         
         if not name:
             return jsonify({'error': 'Name cannot be empty'}), 400
@@ -48,11 +41,7 @@ def create_user_type():
             return jsonify({'error': 'User type already exists'}), 400
         
         # Create new user type
-        user_type = UserType(
-            name=name, 
-            base_template=base_template,
-            permissions=json.dumps(permissions)
-        )
+        user_type = UserType(name=name)
         db.session.add(user_type)
         db.session.commit()
         
@@ -79,8 +68,6 @@ def update_user_type(id):
             return jsonify({'error': 'Name is required'}), 400
         
         name = data['name'].strip()
-        base_template = data.get('base_template', user_type.base_template)
-        permissions = data.get('permissions', {})
         
         if not name:
             return jsonify({'error': 'Name cannot be empty'}), 400
@@ -96,10 +83,6 @@ def update_user_type(id):
         
         # Update user type
         user_type.name = name
-        user_type.base_template = base_template
-        if permissions:
-            user_type.permissions = json.dumps(permissions)
-            
         db.session.commit()
         
         return jsonify(user_type.to_dict()), 200

@@ -7,13 +7,6 @@ import traceback
 # Create blueprint
 discount_bp = Blueprint('discount', __name__, url_prefix='/api')
 
-# Default discount ranges
-DEFAULT_RANGES = [
-    {"min": 0, "max": 5000, "discount": 0, "isInfinite": False},
-    {"min": 5000, "max": 10000, "discount": 5, "isInfinite": False},
-    {"min": 10000, "max": 50000, "discount": 10, "isInfinite": False},
-    {"min": 50000, "max": None, "discount": 15, "isInfinite": True},
-]
 
 
 @discount_bp.route('/discounts', methods=['GET'])
