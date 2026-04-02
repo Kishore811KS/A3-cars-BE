@@ -1,14 +1,14 @@
-# app/routes/billing_routes.py
 from flask import Blueprint, request, jsonify, make_response
 from app.models.billing import Bill, BillItem, Payment
 from app.models.product import Product
 from app.models.current_company import Company
 from app import db
-from sqlalchemy import or_, and_, func
+from sqlalchemy import or_, and_, func, text
 from datetime import datetime, timedelta
 import traceback
 import random
 import string
+from dateutil.relativedelta import relativedelta  # Add this import for warranty calculation
 
 billing_bp = Blueprint("billing_bp", __name__)
 
@@ -1104,35 +1104,186 @@ def get_bills_by_vehicle(vehicle_number):
     except Exception as e:
         print(f"Get bills by vehicle error: {str(e)}")
         return jsonify({"error": "Failed to fetch bills"}), 400
+# ==================== WARRANTY ROUTES (Simplified) ====================
 
-
-# ------------------ GET BILLS BY COMPANY ------------------
-@billing_bp.route("/billing/companies/<int:company_id>/bills", methods=["GET"])
-def get_bills_by_company(company_id):
-    """Get all bills for a specific company"""
+# ------------------ WARRANTY SEARCH BY BILL NUMBER ------------------
+@billing_bp.route("/billing/warranty/search", methods=["GET"])
+def search_warranty_by_bill():
+    """Search warranty information by bill number"""
     try:
-        bills = Bill.query.filter_by(company_id=company_id).order_by(Bill.created_at.desc()).all()
+        bill_number = request.args.get('bill_number')
         
-        result = [{
-            'id': b.id,
-            'billNumber': b.bill_number,
-            'customerName': b.customer_name,
-            'total': round(b.total, 2),
-            'paidAmount': round(b.paid_amount, 2),
-            'paymentStatus': b.payment_status,
-            'createdAt': b.created_at.isoformat() if b.created_at else None
-        } for b in bills]
+        if not bill_number:
+            return jsonify({'error': 'Bill number is required'}), 400
         
-        company_name = bills[0].company_name if bills else None
+        # Use raw SQL to avoid model column issues
+        # First, get the bill - using dictionary parameters
+        bill_query = """
+            SELECT id, bill_number, customer_name, customer_phone, customer_email, 
+                   created_at, total 
+            FROM bills 
+            WHERE bill_number = :bill_number
+        """
+        bill_result = db.session.execute(text(bill_query), {"bill_number": bill_number})
+        bill = bill_result.fetchone()
+        
+        if not bill:
+            return jsonify({'error': 'Bill not found'}), 404
+        
+        # Get bill items - using dictionary parameters
+        items_query = """
+            SELECT id, product_id, product_name, product_model, 
+                   quantity, sell_price, total 
+            FROM bill_items 
+            WHERE bill_id = :bill_id
+        """
+        items_result = db.session.execute(text(items_query), {"bill_id": bill[0]})
+        items = items_result.fetchall()
+        
+        warranty_items = []
+        
+        for item in items:
+            # Get product warranty period from watts field
+            product_query = """
+                SELECT id, name, model, watts 
+                FROM products 
+                WHERE id = :product_id
+            """
+            product_result = db.session.execute(text(product_query), {"product_id": item[1]})
+            product = product_result.fetchone()
+            
+            if not product:
+                warranty_period_months = 12  # Default warranty
+            else:
+                # Get warranty period from watts field (stored in months)
+                watts = product[3] if len(product) > 3 else None
+                warranty_period_months = int(watts) if watts and watts > 0 else 12
+            
+            # Warranty start date is bill creation date
+            warranty_start_date = bill[5]  # created_at column
+            warranty_end_date = warranty_start_date + relativedelta(months=warranty_period_months)
+            
+            # Calculate warranty status
+            current_date = datetime.utcnow()
+            
+            if current_date <= warranty_end_date:
+                days_left = (warranty_end_date - current_date).days
+                warranty_status = {
+                    'status': 'active',
+                    'days_left': days_left,
+                    'message': f'Warranty active. {days_left} days remaining'
+                }
+            else:
+                days_expired = (current_date - warranty_end_date).days
+                warranty_status = {
+                    'status': 'expired',
+                    'days_expired': days_expired,
+                    'message': f'Warranty expired {days_expired} days ago'
+                }
+            
+            warranty_items.append({
+                'productId': item[1],  # product_id
+                'productName': item[2],  # product_name
+                'productModel': item[3] or 'N/A',  # product_model
+                'quantity': item[4],  # quantity
+                'sellPrice': float(item[5]),  # sell_price
+                'total': float(item[6]),  # total
+                'warranty': {
+                    'warrantyPeriodMonths': warranty_period_months,
+                    'warrantyStartDate': warranty_start_date.isoformat() if warranty_start_date else None,
+                    'warrantyEndDate': warranty_end_date.isoformat() if warranty_end_date else None,
+                    'warrantyStatus': warranty_status,
+                    'isActive': warranty_status['status'] == 'active'
+                }
+            })
+        
+        # Bill information
+        bill_info = {
+            'id': bill[0],
+            'billNumber': bill[1],
+            'customerName': bill[2] or 'Walk-in Customer',
+            'customerPhone': bill[3] or '',
+            'customerEmail': bill[4] or '',
+            'billedDate': bill[5].isoformat() if bill[5] else None,
+            'totalAmount': float(bill[6]) if bill[6] else 0,
+            'items': warranty_items
+        }
+        
+        return jsonify(bill_info), 200
+        
+    except Exception as e:
+        print(f"Warranty search error: {str(e)}")
+        print(traceback.format_exc())
+        return jsonify({'error': str(e)}), 500
+
+
+# ------------------ CHECK WARRANTY FOR PRODUCT ------------------
+@billing_bp.route("/billing/warranty/check/<int:product_id>/<int:bill_id>", methods=["GET"])
+def check_product_warranty(product_id, bill_id):
+    """Check warranty status for a specific product in a bill"""
+    try:
+        # Get bill - using dictionary parameters
+        bill_query = """
+            SELECT id, bill_number, created_at 
+            FROM bills 
+            WHERE id = :bill_id
+        """
+        bill_result = db.session.execute(text(bill_query), {"bill_id": bill_id})
+        bill = bill_result.fetchone()
+        
+        if not bill:
+            return jsonify({'error': 'Bill not found'}), 404
+        
+        # Get product warranty period from watts field
+        product_query = """
+            SELECT id, name, model, watts 
+            FROM products 
+            WHERE id = :product_id
+        """
+        product_result = db.session.execute(text(product_query), {"product_id": product_id})
+        product = product_result.fetchone()
+        
+        if not product:
+            return jsonify({'error': 'Product not found'}), 404
+        
+        # Get warranty period from product's watts field
+        watts = product[3] if len(product) > 3 else None
+        warranty_period_months = int(watts) if watts and watts > 0 else 12
+        
+        # Warranty start date is bill creation date
+        warranty_start_date = bill[2]
+        warranty_end_date = warranty_start_date + relativedelta(months=warranty_period_months)
+        
+        # Calculate warranty status
+        current_date = datetime.utcnow()
+        
+        if current_date <= warranty_end_date:
+            days_left = (warranty_end_date - current_date).days
+            warranty_status = {
+                'status': 'active',
+                'days_left': days_left,
+                'message': f'Warranty active. {days_left} days remaining'
+            }
+        else:
+            days_expired = (current_date - warranty_end_date).days
+            warranty_status = {
+                'status': 'expired',
+                'days_expired': days_expired,
+                'message': f'Warranty expired {days_expired} days ago'
+            }
         
         return jsonify({
-            'success': True,
-            'companyId': company_id,
-            'companyName': company_name,
-            'bills': result,
-            'count': len(result)
+            'productId': product[0],
+            'productName': product[1],
+            'productModel': product[2] or '',
+            'billNumber': bill[1],
+            'billedDate': warranty_start_date.isoformat(),
+            'warrantyPeriodMonths': warranty_period_months,
+            'warrantyStartDate': warranty_start_date.isoformat(),
+            'warrantyEndDate': warranty_end_date.isoformat(),
+            'warrantyStatus': warranty_status
         }), 200
         
     except Exception as e:
-        print(f"Get bills by company error: {str(e)}")
-        return jsonify({"error": "Failed to fetch bills"}), 400
+        print(f"Check warranty error: {str(e)}")
+        return jsonify({'error': str(e)}), 500
