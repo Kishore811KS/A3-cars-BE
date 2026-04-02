@@ -1,13 +1,14 @@
-# app/routes/billing_routes.py
 from flask import Blueprint, request, jsonify, make_response
 from app.models.billing import Bill, BillItem, Payment
 from app.models.product import Product
+from app.models.current_company import Company
 from app import db
-from sqlalchemy import or_, and_, func
+from sqlalchemy import or_, and_, func, text
 from datetime import datetime, timedelta
 import traceback
 import random
 import string
+from dateutil.relativedelta import relativedelta  # Add this import for warranty calculation
 
 billing_bp = Blueprint("billing_bp", __name__)
 
@@ -101,6 +102,81 @@ def get_product_by_barcode(barcode):
         return jsonify({"error": "Failed to fetch product"}), 400
 
 
+# ------------------ GET CUSTOMER BY PHONE NUMBER ------------------
+@billing_bp.route("/billing/customer/<string:phone_number>", methods=["GET"])
+def get_customer_by_phone(phone_number):
+    """Get customer details by phone number to check for duplicates"""
+    try:
+        if not phone_number:
+            return jsonify({"error": "Phone number is required"}), 400
+        
+        # Find existing bills with this phone number (get the most recent)
+        existing_customer = Bill.query.filter_by(customer_phone=phone_number).order_by(Bill.created_at.desc()).first()
+        
+        if existing_customer:
+            return jsonify({
+                'exists': True,
+                'customer': {
+                    'name': existing_customer.customer_name,
+                    'phone': existing_customer.customer_phone,
+                    'email': existing_customer.customer_email or '',
+                    'gst': existing_customer.customer_gst or '',
+                    'address': existing_customer.customer_address or '',
+                    'type': existing_customer.customer_type or 'regular'
+                }
+            }), 200
+        else:
+            return jsonify({
+                'exists': False,
+                'customer': None
+            }), 200
+            
+    except Exception as e:
+        print(f"Get customer error: {str(e)}")
+        return jsonify({"error": "Failed to fetch customer details"}), 400
+
+
+# ------------------ GET ALL CUSTOMERS (for quick selection) ------------------
+@billing_bp.route("/billing/customers", methods=["GET"])
+def get_all_customers():
+    """Get unique customers from bill history"""
+    try:
+        # Get unique customers from bills
+        customers = db.session.query(
+            Bill.customer_name,
+            Bill.customer_phone,
+            Bill.customer_email,
+            Bill.customer_gst,
+            Bill.customer_address,
+            Bill.customer_type,
+            func.count(Bill.id).label('bill_count'),
+            func.max(Bill.created_at).label('last_visit')
+        ).filter(Bill.customer_phone.isnot(None), Bill.customer_phone != '')\
+         .group_by(Bill.customer_name, Bill.customer_phone, Bill.customer_email, 
+                   Bill.customer_gst, Bill.customer_address, Bill.customer_type)\
+         .order_by(func.max(Bill.created_at).desc()).limit(50).all()
+        
+        result = [{
+            'name': c[0],
+            'phone': c[1],
+            'email': c[2] or '',
+            'gst': c[3] or '',
+            'address': c[4] or '',
+            'type': c[5] or 'regular',
+            'billCount': c[6],
+            'lastVisit': c[7].isoformat() if c[7] else None
+        } for c in customers]
+        
+        return jsonify({
+            'success': True,
+            'customers': result
+        }), 200
+        
+    except Exception as e:
+        print(f"Get customers error: {str(e)}")
+        return jsonify({"error": "Failed to fetch customers"}), 400
+
+
 # ------------------ CREATE NEW BILL ------------------
 @billing_bp.route("/billing/bills", methods=["POST"])
 def create_bill():
@@ -127,22 +203,54 @@ def create_bill():
         bill.customer_address = data.get('customerAddress', '')
         bill.customer_type = data.get('customerType', 'regular')
         
-        # Vehicle Information (NEW)
+        # Vehicle Information
         bill.vehicle_name = data.get('vehicleName', '')
         bill.vehicle_number = data.get('vehicleNumber', '')
         
-        # Created By (User ID from localStorage)
-        bill.created_by = data.get('createdBy', None)
+        # Company Information - Fetch and store snapshot
+        company_id = data.get('companyId')
+        if company_id:
+            company = Company.query.get(company_id)
+            if company:
+                bill.company_id = company.id
+                bill.company_name = company.name
+                bill.company_address = company.address
+                bill.company_phone = company.phone
+                bill.company_email = company.email
+                bill.company_gst = company.gst_number
+                bill.company_alternate_phone = company.alternate_phone
+                bill.company_bank_name = company.bank_name
+                bill.company_bank_account = company.bank_account_number
+                bill.company_bank_ifsc = company.bank_ifsc
+                bill.company_bank_branch = company.bank_branch
+                bill.company_upi_id = company.upi_id
+                # Store logo path if exists
+                if hasattr(company, 'logo_path') and company.logo_path:
+                    bill.company_logo = company.logo_path
         
-        # Discount and tax settings
+        # Created By (User information) - Hide discount details from employee
+        bill.created_by = data.get('createdBy', None)
+        bill.created_by_name = data.get('createdByName', 'System')
+        
+        # Discount and tax settings (employee should not see discount details)
+        # These will be applied but not shown to employee
         bill.discount = float(data.get('discount', 0))
-        bill.discount_type = data.get('discountType', 'amount')
+        bill.discount_type = data.get('discountType', 'amount')  # 'amount' or 'percentage'
         bill.tax = float(data.get('tax', 0))
         bill.tax_type = data.get('taxType', 'percentage')
         
         # Payment information
         bill.paid_amount = float(data.get('paidAmount', 0))
         bill.payment_method = data.get('paymentMethod', 'cash')
+        
+        # Payment details snapshot
+        bill.cash_received = float(data.get('cashReceived', 0))
+        bill.payment_card_number = data.get('cardNumber', '')
+        bill.payment_card_holder = data.get('cardHolderName', '')
+        bill.payment_upi_id = data.get('upiId', '')
+        bill.payment_transaction_id = data.get('transactionId', '')
+        bill.payment_bank_name = data.get('bankName', '')
+        bill.payment_cheque_number = data.get('chequeNumber', '')
         
         # Add items and update stock
         items_added = []
@@ -162,7 +270,7 @@ def create_bill():
                 db.session.rollback()
                 return jsonify({"error": f"Insufficient stock for {product.name}. Available: {product.quantity}"}), 400
             
-            # Calculate item total
+            # Calculate item total with possible discount
             item_total = product.sell_price * quantity
             
             # Create bill item with status (defaults to 'pending' from model)
@@ -187,7 +295,7 @@ def create_bill():
                 'status': 'pending'
             })
         
-        # Calculate all totals
+        # Calculate all totals (including discount and tax)
         bill.calculate_totals()
         
         # Save to database
@@ -206,6 +314,7 @@ def create_bill():
             db.session.add(payment)
             db.session.commit()
         
+        # Return response - hide discount details from employee
         return jsonify({
             'success': True,
             'message': 'Bill created successfully',
@@ -221,6 +330,56 @@ def create_bill():
         print(f"Create bill error: {str(e)}")
         print(traceback.format_exc())
         return jsonify({"error": str(e)}), 400
+
+
+# ------------------ UPDATE CUSTOMER INFORMATION ------------------
+@billing_bp.route("/billing/customer/<string:phone_number>", methods=["PUT"])
+def update_customer_info(phone_number):
+    """Update customer information for all existing records"""
+    try:
+        data = request.get_json()
+        
+        if not phone_number:
+            return jsonify({"error": "Phone number is required"}), 400
+        
+        # Find all bills with this phone number and update customer info
+        existing_bills = Bill.query.filter_by(customer_phone=phone_number).all()
+        
+        if not existing_bills:
+            return jsonify({"error": "Customer not found"}), 404
+        
+        # Update all records with new information
+        for bill in existing_bills:
+            if data.get('name'):
+                bill.customer_name = data.get('name')
+            if data.get('email'):
+                bill.customer_email = data.get('email')
+            if data.get('gst'):
+                bill.customer_gst = data.get('gst')
+            if data.get('address'):
+                bill.customer_address = data.get('address')
+            if data.get('type'):
+                bill.customer_type = data.get('type')
+        
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Customer information updated successfully',
+            'customer': {
+                'name': existing_bills[0].customer_name,
+                'phone': existing_bills[0].customer_phone,
+                'email': existing_bills[0].customer_email,
+                'gst': existing_bills[0].customer_gst,
+                'address': existing_bills[0].customer_address,
+                'type': existing_bills[0].customer_type
+            }
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"Update customer error: {str(e)}")
+        return jsonify({"error": "Failed to update customer information"}), 400
 
 
 # ------------------ GET BILLS WITH PENDING ITEMS ------------------
@@ -249,11 +408,13 @@ def get_bills_with_pending_items():
                 'customerType': bill.customer_type,
                 'vehicleName': bill.vehicle_name,
                 'vehicleNumber': bill.vehicle_number,
+                'companyName': bill.company_name,
                 'total': round(bill.total, 2),
                 'paidAmount': round(bill.paid_amount, 2),
                 'pendingItems': pending_count,
                 'createdAt': bill.created_at.isoformat() if bill.created_at else None,
-                'createdBy': bill.created_by
+                'createdBy': bill.created_by,
+                'createdByName': bill.created_by_name
             })
         
         return jsonify({
@@ -299,6 +460,7 @@ def get_pending_bill_items(bill_id):
             'customer_name': bill.customer_name,
             'vehicle_name': bill.vehicle_name,
             'vehicle_number': bill.vehicle_number,
+            'company_name': bill.company_name,
             'items': items
         }), 200
         
@@ -393,6 +555,7 @@ def get_all_bills():
         vehicle_number = request.args.get('vehicle_number')
         payment_method = request.args.get('payment_method')
         payment_status = request.args.get('payment_status')
+        company_id = request.args.get('company_id', type=int)
         
         # Build query
         query = Bill.query
@@ -411,6 +574,8 @@ def get_all_bills():
             query = query.filter(Bill.payment_method == payment_method)
         if payment_status:
             query = query.filter(Bill.payment_status == payment_status)
+        if company_id:
+            query = query.filter(Bill.company_id == company_id)
         
         # Order by most recent first
         query = query.order_by(Bill.created_at.desc())
@@ -437,6 +602,8 @@ def get_all_bills():
                 'customerGST': bill.customer_gst,
                 'vehicleName': bill.vehicle_name,
                 'vehicleNumber': bill.vehicle_number,
+                'companyName': bill.company_name,
+                'companyGST': bill.company_gst,
                 'subtotal': round(bill.subtotal, 2),
                 'discount': round(bill.discount, 2),
                 'tax': round(bill.tax, 2),
@@ -447,7 +614,8 @@ def get_all_bills():
                 'itemCount': len(bill.items),
                 'pendingItems': pending_count,
                 'createdAt': bill.created_at.isoformat() if bill.created_at else None,
-                'createdBy': bill.created_by
+                'createdBy': bill.created_by,
+                'createdByName': bill.created_by_name
             })
         
         return jsonify({
@@ -493,6 +661,35 @@ def get_bill_by_id(bill_id):
         bill_dict['vehicleName'] = bill.vehicle_name
         bill_dict['vehicleNumber'] = bill.vehicle_number
         bill_dict['createdBy'] = bill.created_by
+        bill_dict['createdByName'] = bill.created_by_name
+        
+        # Add company details to response
+        bill_dict['company'] = {
+            'id': bill.company_id,
+            'name': bill.company_name,
+            'address': bill.company_address,
+            'city': bill.company_city,
+            'phone': bill.company_phone,
+            'email': bill.company_email,
+            'gst': bill.company_gst,
+            'alternatePhone': bill.company_alternate_phone,
+            'bankName': bill.company_bank_name,
+            'bankAccount': bill.company_bank_account,
+            'bankIfsc': bill.company_bank_ifsc,
+            'bankBranch': bill.company_bank_branch,
+            'upiId': bill.company_upi_id
+        }
+        
+        # Add payment details to response
+        bill_dict['paymentDetails'] = {
+            'cardNumber': bill.payment_card_number,
+            'cardHolder': bill.payment_card_holder,
+            'upiId': bill.payment_upi_id,
+            'transactionId': bill.payment_transaction_id,
+            'bankName': bill.payment_bank_name,
+            'chequeNumber': bill.payment_cheque_number,
+            'cashReceived': bill.cash_received
+        }
         
         return jsonify(bill_dict), 200
         
@@ -526,6 +723,35 @@ def get_bill_by_number(bill_number):
         bill_dict['vehicleName'] = bill.vehicle_name
         bill_dict['vehicleNumber'] = bill.vehicle_number
         bill_dict['createdBy'] = bill.created_by
+        bill_dict['createdByName'] = bill.created_by_name
+        
+        # Add company details to response
+        bill_dict['company'] = {
+            'id': bill.company_id,
+            'name': bill.company_name,
+            'address': bill.company_address,
+            'city': bill.company_city,
+            'phone': bill.company_phone,
+            'email': bill.company_email,
+            'gst': bill.company_gst,
+            'alternatePhone': bill.company_alternate_phone,
+            'bankName': bill.company_bank_name,
+            'bankAccount': bill.company_bank_account,
+            'bankIfsc': bill.company_bank_ifsc,
+            'bankBranch': bill.company_bank_branch,
+            'upiId': bill.company_upi_id
+        }
+        
+        # Add payment details to response
+        bill_dict['paymentDetails'] = {
+            'cardNumber': bill.payment_card_number,
+            'cardHolder': bill.payment_card_holder,
+            'upiId': bill.payment_upi_id,
+            'transactionId': bill.payment_transaction_id,
+            'bankName': bill.payment_bank_name,
+            'chequeNumber': bill.payment_cheque_number,
+            'cashReceived': bill.cash_received
+        }
         
         return jsonify(bill_dict), 200
         
@@ -545,6 +771,22 @@ def update_bill_payment(bill_id):
         # Update payment details
         bill.paid_amount = float(data.get('paidAmount', bill.paid_amount))
         bill.payment_method = data.get('paymentMethod', bill.payment_method)
+        
+        # Update payment details snapshot
+        if 'cashReceived' in data:
+            bill.cash_received = float(data.get('cashReceived', 0))
+        if 'cardNumber' in data:
+            bill.payment_card_number = data.get('cardNumber', '')
+        if 'cardHolderName' in data:
+            bill.payment_card_holder = data.get('cardHolderName', '')
+        if 'upiId' in data:
+            bill.payment_upi_id = data.get('upiId', '')
+        if 'transactionId' in data:
+            bill.payment_transaction_id = data.get('transactionId', '')
+        if 'bankName' in data:
+            bill.payment_bank_name = data.get('bankName', '')
+        if 'chequeNumber' in data:
+            bill.payment_cheque_number = data.get('chequeNumber', '')
         
         # Recalculate
         bill.calculate_totals()
@@ -695,9 +937,11 @@ def get_billing_statistics():
                 'customerType': b.customer_type,
                 'vehicleName': b.vehicle_name,
                 'vehicleNumber': b.vehicle_number,
+                'companyName': b.company_name,
                 'total': round(b.total, 2),
                 'createdAt': b.created_at.isoformat(),
-                'createdBy': b.created_by
+                'createdBy': b.created_by,
+                'createdByName': b.created_by_name
             } for b in recent_bills]
         }), 200
         
@@ -842,6 +1086,7 @@ def get_bills_by_vehicle(vehicle_number):
             'id': b.id,
             'billNumber': b.bill_number,
             'customerName': b.customer_name,
+            'companyName': b.company_name,
             'total': round(b.total, 2),
             'paidAmount': round(b.paid_amount, 2),
             'paymentStatus': b.payment_status,
@@ -859,3 +1104,186 @@ def get_bills_by_vehicle(vehicle_number):
     except Exception as e:
         print(f"Get bills by vehicle error: {str(e)}")
         return jsonify({"error": "Failed to fetch bills"}), 400
+# ==================== WARRANTY ROUTES (Simplified) ====================
+
+# ------------------ WARRANTY SEARCH BY BILL NUMBER ------------------
+@billing_bp.route("/billing/warranty/search", methods=["GET"])
+def search_warranty_by_bill():
+    """Search warranty information by bill number"""
+    try:
+        bill_number = request.args.get('bill_number')
+        
+        if not bill_number:
+            return jsonify({'error': 'Bill number is required'}), 400
+        
+        # Use raw SQL to avoid model column issues
+        # First, get the bill - using dictionary parameters
+        bill_query = """
+            SELECT id, bill_number, customer_name, customer_phone, customer_email, 
+                   created_at, total 
+            FROM bills 
+            WHERE bill_number = :bill_number
+        """
+        bill_result = db.session.execute(text(bill_query), {"bill_number": bill_number})
+        bill = bill_result.fetchone()
+        
+        if not bill:
+            return jsonify({'error': 'Bill not found'}), 404
+        
+        # Get bill items - using dictionary parameters
+        items_query = """
+            SELECT id, product_id, product_name, product_model, 
+                   quantity, sell_price, total 
+            FROM bill_items 
+            WHERE bill_id = :bill_id
+        """
+        items_result = db.session.execute(text(items_query), {"bill_id": bill[0]})
+        items = items_result.fetchall()
+        
+        warranty_items = []
+        
+        for item in items:
+            # Get product warranty period from watts field
+            product_query = """
+                SELECT id, name, model, watts 
+                FROM products 
+                WHERE id = :product_id
+            """
+            product_result = db.session.execute(text(product_query), {"product_id": item[1]})
+            product = product_result.fetchone()
+            
+            if not product:
+                warranty_period_months = 12  # Default warranty
+            else:
+                # Get warranty period from watts field (stored in months)
+                watts = product[3] if len(product) > 3 else None
+                warranty_period_months = int(watts) if watts and watts > 0 else 12
+            
+            # Warranty start date is bill creation date
+            warranty_start_date = bill[5]  # created_at column
+            warranty_end_date = warranty_start_date + relativedelta(months=warranty_period_months)
+            
+            # Calculate warranty status
+            current_date = datetime.utcnow()
+            
+            if current_date <= warranty_end_date:
+                days_left = (warranty_end_date - current_date).days
+                warranty_status = {
+                    'status': 'active',
+                    'days_left': days_left,
+                    'message': f'Warranty active. {days_left} days remaining'
+                }
+            else:
+                days_expired = (current_date - warranty_end_date).days
+                warranty_status = {
+                    'status': 'expired',
+                    'days_expired': days_expired,
+                    'message': f'Warranty expired {days_expired} days ago'
+                }
+            
+            warranty_items.append({
+                'productId': item[1],  # product_id
+                'productName': item[2],  # product_name
+                'productModel': item[3] or 'N/A',  # product_model
+                'quantity': item[4],  # quantity
+                'sellPrice': float(item[5]),  # sell_price
+                'total': float(item[6]),  # total
+                'warranty': {
+                    'warrantyPeriodMonths': warranty_period_months,
+                    'warrantyStartDate': warranty_start_date.isoformat() if warranty_start_date else None,
+                    'warrantyEndDate': warranty_end_date.isoformat() if warranty_end_date else None,
+                    'warrantyStatus': warranty_status,
+                    'isActive': warranty_status['status'] == 'active'
+                }
+            })
+        
+        # Bill information
+        bill_info = {
+            'id': bill[0],
+            'billNumber': bill[1],
+            'customerName': bill[2] or 'Walk-in Customer',
+            'customerPhone': bill[3] or '',
+            'customerEmail': bill[4] or '',
+            'billedDate': bill[5].isoformat() if bill[5] else None,
+            'totalAmount': float(bill[6]) if bill[6] else 0,
+            'items': warranty_items
+        }
+        
+        return jsonify(bill_info), 200
+        
+    except Exception as e:
+        print(f"Warranty search error: {str(e)}")
+        print(traceback.format_exc())
+        return jsonify({'error': str(e)}), 500
+
+
+# ------------------ CHECK WARRANTY FOR PRODUCT ------------------
+@billing_bp.route("/billing/warranty/check/<int:product_id>/<int:bill_id>", methods=["GET"])
+def check_product_warranty(product_id, bill_id):
+    """Check warranty status for a specific product in a bill"""
+    try:
+        # Get bill - using dictionary parameters
+        bill_query = """
+            SELECT id, bill_number, created_at 
+            FROM bills 
+            WHERE id = :bill_id
+        """
+        bill_result = db.session.execute(text(bill_query), {"bill_id": bill_id})
+        bill = bill_result.fetchone()
+        
+        if not bill:
+            return jsonify({'error': 'Bill not found'}), 404
+        
+        # Get product warranty period from watts field
+        product_query = """
+            SELECT id, name, model, watts 
+            FROM products 
+            WHERE id = :product_id
+        """
+        product_result = db.session.execute(text(product_query), {"product_id": product_id})
+        product = product_result.fetchone()
+        
+        if not product:
+            return jsonify({'error': 'Product not found'}), 404
+        
+        # Get warranty period from product's watts field
+        watts = product[3] if len(product) > 3 else None
+        warranty_period_months = int(watts) if watts and watts > 0 else 12
+        
+        # Warranty start date is bill creation date
+        warranty_start_date = bill[2]
+        warranty_end_date = warranty_start_date + relativedelta(months=warranty_period_months)
+        
+        # Calculate warranty status
+        current_date = datetime.utcnow()
+        
+        if current_date <= warranty_end_date:
+            days_left = (warranty_end_date - current_date).days
+            warranty_status = {
+                'status': 'active',
+                'days_left': days_left,
+                'message': f'Warranty active. {days_left} days remaining'
+            }
+        else:
+            days_expired = (current_date - warranty_end_date).days
+            warranty_status = {
+                'status': 'expired',
+                'days_expired': days_expired,
+                'message': f'Warranty expired {days_expired} days ago'
+            }
+        
+        return jsonify({
+            'productId': product[0],
+            'productName': product[1],
+            'productModel': product[2] or '',
+            'billNumber': bill[1],
+            'billedDate': warranty_start_date.isoformat(),
+            'warrantyPeriodMonths': warranty_period_months,
+            'warrantyStartDate': warranty_start_date.isoformat(),
+            'warrantyEndDate': warranty_end_date.isoformat(),
+            'warrantyStatus': warranty_status
+        }), 200
+        
+    except Exception as e:
+        print(f"Check warranty error: {str(e)}")
+        return jsonify({'error': str(e)}), 500

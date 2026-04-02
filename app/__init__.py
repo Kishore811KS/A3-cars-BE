@@ -27,7 +27,7 @@ def create_app():
     CORS(
         app,
         supports_credentials=True,
-        resources={r"/*": {"origins": "*"}}
+        resources={r"/*": {"origins": "*"}},
     )
 
     # Import models so Flask-Migrate detects them
@@ -46,13 +46,14 @@ def create_app():
     from app.routes.attendance_routes import attendance_bp
     from app.routes.current_company_routes import company_bp
     from app.routes.enquiry_routes import enquiry_bp
-    from app.routes.discount_routes import discount_bp  # ADD THIS LINE
+    from app.routes.discount_routes import discount_bp
     from app.routes.permissions_routes import permissions_bp
+    from app.routes.payment_routes import payment_tracking_bp
 
     app.register_blueprint(login_bp, url_prefix="/api")
     app.register_blueprint(product_bp, url_prefix="/api")
     app.register_blueprint(billing_bp, url_prefix="/api")
-    app.register_blueprint(supplier_bp, url_prefix="/api")
+    app.register_blueprint(supplier_bp)
     app.register_blueprint(quotation_bp, url_prefix='/api')
     app.register_blueprint(invoice_bp, url_prefix='/api')
     app.register_blueprint(service_bp)
@@ -63,6 +64,7 @@ def create_app():
     app.register_blueprint(enquiry_bp,url_prefix="/api") 
     app.register_blueprint(discount_bp)
     app.register_blueprint(permissions_bp)
+    app.register_blueprint(payment_tracking_bp)
 
     # Health Check Route
     @app.route('/api/health', methods=['GET'])
