@@ -51,7 +51,7 @@ def create_app():
     app.register_blueprint(login_bp, url_prefix="/api")
     app.register_blueprint(product_bp, url_prefix="/api")
     app.register_blueprint(billing_bp, url_prefix="/api")
-    app.register_blueprint(supplier_bp, url_prefix="/api")
+    app.register_blueprint(supplier_bp)
     app.register_blueprint(quotation_bp, url_prefix='/api')
     app.register_blueprint(invoice_bp, url_prefix='/api')
     app.register_blueprint(service_bp)
