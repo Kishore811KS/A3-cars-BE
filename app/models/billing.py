@@ -60,6 +60,8 @@ class Bill(db.Model):
     cash_received = db.Column(db.Float, default=0)
     
     # Metadata
+    status = db.Column(db.String(20), default='active')  # 'active', 'cancelled'
+    cancel_remarks = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     created_by = db.Column(db.Integer, nullable=True)  # User ID who created the bill
@@ -107,6 +109,8 @@ class Bill(db.Model):
                 'address': self.customer_address,
                 'type': self.customer_type
             },
+            'status': self.status,
+            'cancelRemarks': self.cancel_remarks,
             'company': {
                 'id': self.company_id,
                 'name': self.company_name,

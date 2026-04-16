@@ -557,8 +557,8 @@ def get_all_bills():
         payment_status = request.args.get('payment_status')
         company_id = request.args.get('company_id', type=int)
         
-        # Build query
-        query = Bill.query
+        # Build query (exclude cancelled bills by default)
+        query = Bill.query.filter(Bill.status != 'cancelled')
         
         if start_date:
             query = query.filter(Bill.created_at >= datetime.fromisoformat(start_date))
@@ -820,23 +820,27 @@ def update_bill_payment(bill_id):
 # ------------------ CANCEL/REFUND BILL ------------------
 @billing_bp.route("/billing/bills/<int:bill_id>/cancel", methods=["POST"])
 def cancel_bill(bill_id):
-    """Cancel a bill and restore stock"""
+    """Cancel a bill, save remarks, and restore stock"""
     try:
         bill = Bill.query.get_or_404(bill_id)
         
-        # Restore product quantities for items that are not completed
+        data = request.json or {}
+        remarks = data.get('remarks', '')
+        
+        # Restore all product quantities unconditionally
         for item in bill.items:
-            if item.item_status != 'completed':
-                product = Product.query.get(item.product_id)
-                if product:
-                    product.quantity += item.quantity
+            product = Product.query.get(item.product_id)
+            if product:
+                product.quantity += item.quantity
+            item.item_status = 'cancelled'
         
         # Update payment status
         for payment in bill.payments:
             payment.status = 'refunded'
         
-        # Delete bill (or mark as cancelled)
-        db.session.delete(bill)  # Or add a 'cancelled' field to Bill model
+        # Mark bill as cancelled
+        bill.status = 'cancelled'
+        bill.cancel_remarks = remarks
         
         db.session.commit()
         
@@ -848,6 +852,33 @@ def cancel_bill(bill_id):
     except Exception as e:
         db.session.rollback()
         print(f"Cancel bill error: {str(e)}")
+        return jsonify({"error": str(e)}), 400
+
+
+# ------------------ GET CANCELLED BILLS ------------------
+@billing_bp.route("/billing/bills/canceled", methods=["GET"])
+def get_canceled_bills():
+    """Get all cancelled bills"""
+    try:
+        query = Bill.query.filter(Bill.status == 'cancelled').order_by(Bill.updated_at.desc())
+        bills = query.all()
+        
+        formatted_bills = []
+        for bill in bills:
+            formatted_bills.append({
+                'id': bill.id,
+                'billNumber': bill.bill_number,
+                'customerName': bill.customer_name,
+                'customerPhone': bill.customer_phone,
+                'total': bill.total,
+                'status': bill.status,
+                'cancelRemarks': bill.cancel_remarks,
+                'updatedAt': bill.updated_at.isoformat() if bill.updated_at else bill.created_at.isoformat() if bill.created_at else None
+            })
+            
+        return jsonify(formatted_bills), 200
+    except Exception as e:
+        print(f"Get canceled bills error: {str(e)}")
         return jsonify({"error": str(e)}), 400
 
 
